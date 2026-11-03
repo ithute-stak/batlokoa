@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'customer_flows.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -289,7 +290,7 @@ class Profile extends StatelessWidget{
  (name:'Help and support',icon:Icons.help_outline,text:'Customer support and complaints workflows will be available here.'),
  (name:'About Batlokoa',icon:Icons.info_outline,text:'Batlokoa Finance • batlokoa.co.ls\nPowered by LoanHub + IthutePay.')])
  ListTile(contentPadding:EdgeInsets.zero,leading:Icon(item.icon,color:teal),title:Text(item.name),
- trailing:const Icon(Icons.chevron_right),onTap:()=>open(Info(title:item.name,body:item.text))),
+ trailing:const Icon(Icons.chevron_right),onTap:()=>open(item.name=='Identity verification'?const VerifyCustomer():item.name=='Security settings'?const AccountPreferences():item.name=='Notifications'?const AlertsPage():item.name=='Help and support'?const HelpCentre():Info(title:item.name,body:item.text))),
  ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.receipt_long,color:teal),
  title:const Text('Transaction history'),trailing:const Icon(Icons.chevron_right),onTap:()=>open(const History())),
  ])),
