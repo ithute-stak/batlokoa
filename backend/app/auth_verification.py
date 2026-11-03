@@ -8,7 +8,7 @@ A production bootstrap must pin the trusted JWKS URL and configure rotations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -16,6 +16,11 @@ import jwt
 from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 
 from .identity import VerifiedClaims
+
+
+class CentralAccessClaims(VerifiedClaims):
+    sid: str
+    token_use: Literal['access']
 
 
 class SigningKeySource(Protocol):
@@ -39,7 +44,7 @@ class CentralAuthVerifier:
                 or parsed.path not in ("", "/") or not self.audience.strip()):
             raise ValueError("Central Auth issuer must be a trusted HTTPS origin")
 
-    def verify(self, token: str) -> VerifiedClaims:
+    def verify(self, token: str) -> CentralAccessClaims:
         if not isinstance(token, str) or not 32 <= len(token) <= 8192:
             raise jwt.InvalidTokenError("Invalid access token")
         try:
@@ -66,4 +71,4 @@ class CentralAuthVerifier:
             UUID(str(claims["sid"]))
         except (KeyError, TypeError, ValueError) as exc:
             raise jwt.InvalidTokenError("Invalid immutable subject or session ID") from exc
-        return VerifiedClaims.model_validate(claims)
+        return CentralAccessClaims.model_validate(claims)
