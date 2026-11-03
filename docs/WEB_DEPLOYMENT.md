@@ -33,3 +33,19 @@ The container listens on port 8080 and Docker Compose binds only to 127.0.0.1:80
 ## CI
 
 The GitHub Actions workflow produces a downloadable **batlokoa-web-preview** artifact only after analyzer, widget tests and release build pass. A successful build does not imply production approval.
+
+## Staging smoke test
+
+Run `bash scripts/smoke_web.sh` after packaging the web container. It starts a temporary Docker container bound to the loopback interface and verifies:
+
+- The HTTP liveness endpoint
+- The Batlokoa HTML entrypoint
+- Flutter bootstrap and compiled JavaScript asset delivery
+- SPA navigation fallback for client-side routes
+- Basic browser security response headers
+
+This is **not** a real-browser rendering test and does not verify responsiveness, accessibility, login, settlement, or third-party APIs. Container liveness must not be confused with payment-system health.
+
+## Staging release gate
+
+A staging release should be restricted to authorised testers while it contains demo authentication and fictional balances. Before opening it publicly, the team must verify the full tenant-specific backend integration, customer privacy disclosures and formal security controls. The domain `batlokoa.co.ls` remains an intended deployment hostname, not a configured or proven public endpoint. No production server or DNS change is made by these files.
