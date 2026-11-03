@@ -4,6 +4,7 @@ import 'payment_review.dart';
 import 'activity_history.dart';
 import 'input_validators.dart';
 import 'customer_loans_screen.dart';
+import 'customer_session_screen.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -38,6 +39,7 @@ class _EntryState extends State<Entry>{
  FilledButton(onPressed:()=>setState(()=>entered=true),child:Text(login?'Sign in (demo)':'Register (demo)')),
  TextButton(onPressed:()=>setState(()=>login=!login),child:Text(login?'Create an account':'Already have an account?')),
  TextButton(onPressed:()=>setState(()=>entered=true),child:const Text('Explore demo')),
+ TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>const CustomerSessionScreen())),child:const Text('Secure sign-in status')),
  ])),const SizedBox(height:14),
  const Text('Demo interface only. No real authentication or money transfers.',textAlign:TextAlign.center,style:TextStyle(fontSize:12)),
  ]))))));
