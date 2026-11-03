@@ -6,7 +6,9 @@ tenant authorization, regulatory and reconciliation controls are implemented.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+
+from .customer_loans_api import router as customer_loans_router
 from fastapi.responses import JSONResponse
 
 app = FastAPI(
@@ -41,7 +43,6 @@ async def capabilities() -> dict[str, object]:
     }
 
 
-@app.get("/api/v1/me/loans", include_in_schema=False)
 @app.post("/api/v1/loans/applications", include_in_schema=False)
 @app.post("/api/v1/payments/intents", include_in_schema=False)
 @app.get("/api/v1/me/wallet", include_in_schema=False)
@@ -55,3 +56,6 @@ async def financial_routes_disabled() -> JSONResponse:
         },
         headers={"Cache-Control": "no-store"},
     )
+
+# Customer loan reads are opt-in, authenticated and default to HTTP 503.
+app.include_router(customer_loans_router)
