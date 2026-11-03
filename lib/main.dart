@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
-import 'activity_details.dart';
 import 'activity_history.dart';
 
 void main() => runApp(const BatlokoaApp());
@@ -246,7 +245,7 @@ class Services extends StatelessWidget{
  const Services({super.key,required this.onTap,this.compact=false});
  @override Widget build(BuildContext context)=>LayoutBuilder(builder:(context,c)=>GridView.count(
  crossAxisCount:c.maxWidth<220?1:c.maxWidth>500?4:2,crossAxisSpacing:9,mainAxisSpacing:9,
- mainAxisExtent:(compact?100.0:112.0)*MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0,1.5),
+ mainAxisExtent:(compact?100.0:112.0)*MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0,1.5).toDouble(),
  shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),
  children:[for(final s in serviceList)InkWell(onTap:()=>onTap(s.name),borderRadius:BorderRadius.circular(14),
  child:Container(decoration:BoxDecoration(color:bg,borderRadius:BorderRadius.circular(14)),
