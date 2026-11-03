@@ -140,3 +140,9 @@ Outstanding external prerequisites: verified !thute Auth client registration, pr
 The six existing Flutter screens now use centralized **provisional** theme tokens in `lib/batlokoa_design.dart`, rather than duplicating colour values, field styling and tap-target dimensions. Typography, button minimum heights, card spacing and responsive horizontal page gutters have been standardized. Bill-service cards allow longer captions at increased text scale. The sign-in, Home, Loans, Wallet, Pay bills and Profile paths remain demo-only; no real authentication, account data or payments were activated.
 
 **Branding status:** The teal/mint palette is deliberately marked provisional in the code. Official Batlokoa Financial Services logo files and approved red/blue/grey/white hexadecimal palette still need confirmation before a brand rollout. Do not substitute a generated logo or claim these colours are official. New widget tests verify theme invariants, mobile/desktop navigation and demo disclosures, while existing CI continues to exercise API, PostgreSQL, web and HTTPS staging protections.
+
+## Phase 19 — large-text accessibility and safer input ergonomics
+
+Loan account detail and payment-review label/value rows now adapt to narrow cards or increased text scaling by stacking the text instead of squeezing amounts beside labels. Shared `ActionButton` no longer fixes its height to 50 pixels, allowing labels to wrap at larger accessibility font sizes. Demo sign-in and demo financial forms declare appropriate keyboard Next/Done actions and decimal numeric keyboard hints for amounts.
+
+Widget tests cover doubled text size in account details, enlarged payment summaries, 320px loan navigation and keyboard action configuration. This stage changes presentation only. It does **not** store sensitive login credentials, submit loan applications, retrieve balances or enable payments. The provisional colour palette is still not the verified Batlokoa brand.
