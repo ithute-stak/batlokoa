@@ -44,3 +44,25 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8090
 ```
 
 Only process liveness and a non-sensitive, disabled-capability report can return success. The current scaffold has no credentials, no stored customer data, no database and no provider traffic.
+
+## Phase 2: cryptographically validated identity and tenant guard (foundation)
+
+The `backend/app/identity.py` module now supplies independently testable primitives for:
+
+- Verifying **RS256-signed** JWTs against a **trusted public key** with a pinned HTTPS issuer, audience, expiration, issuance time and immutable subject.
+- Resolving the immutable subject to a customer using a **server-owned mapping directory**, never email, phone or client-supplied tenant fields.
+- Rejecting absent mappings, cross-tenant associations and subject mismatches. The default directory contains **zero** customers.
+
+The repository does not yet contain a trusted key-discovery lifecycle, real persistent customer directory, login/session flow, or verified LoanHub-specific read endpoint. Therefore **none of these primitives is wired into a real financial route**, and the existing 503 guard remains unchanged. This is intentional: passing JWT unit tests does not prove production authentication.
+
+### Requirements before activating authenticated reads
+
+1. Confirm Ithute Auth OIDC discovery URL, signing key rotation, token issuer and the **Batlokoa-specific audience**. Do not accept a token minted for IthutePay or LoanHub if it does not target Batlokoa.
+2. Store the approved Batlokoa tenant ID and subject-to-customer mapping in a protected backend data store. Verify mapping against the actual LoanHub tenant and customer model.
+3. Determine whether the frontend uses a backend-for-frontend session with HttpOnly Secure SameSite cookies rather than browser-held API tokens. Add CSRF protection for state-changing actions.
+4. Verify LoanHub endpoint paths, scopes, service credentials, rate limits and status semantics against the actual repository, then implement a strictly read-only adapter with mockable contract tests.
+5. Never put authentication keys or per-tenant upstream credentials in the Flutter bundle. Payments remain entirely disabled until the separate payment review and reconciliation phase.
+
+### Test scope
+
+`backend/tests/test_identity.py` tests valid signed JWTs, wrong issuer and audience, invalid or expired claims, wrong signing keys, unsigned tokens, absent customer mappings and cross-tenant isolation. These are local unit tests using test-generated RSA keys, not successful live SSO or LoanHub connectivity.
