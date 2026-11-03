@@ -91,15 +91,30 @@ class DemoPaymentReview extends StatelessWidget {
     ),
   );
 
-  Widget _line(String title, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 9),
-    child: Row(
-      children: [
-        Expanded(child: Text(title, style: const TextStyle(color: Colors.black54))),
-        const SizedBox(width: 12),
-        Flexible(child: Text(value, textAlign: TextAlign.end,
-            style: const TextStyle(fontWeight: FontWeight.w700))),
-      ],
+  Widget _line(String title, String value) => Builder(
+    builder: (context) => LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 300 ||
+            MediaQuery.textScalerOf(context).scale(1.0) > 1.35;
+        final label = Text(title, style: const TextStyle(color: Colors.black54));
+        final amount = Text(value,
+          textAlign: stacked ? TextAlign.start : TextAlign.end,
+          style: const TextStyle(fontWeight: FontWeight.w700));
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: stacked
+              ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  label,
+                  const SizedBox(height: 4),
+                  amount,
+                ])
+              : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: label),
+                  const SizedBox(width: 12),
+                  Flexible(child: amount),
+                ]),
+        );
+      },
     ),
   );
 }
