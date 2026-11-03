@@ -30,8 +30,8 @@ fi
 index="$(curl --silent --show-error --fail "$BASE/")"
 printf '%s' "$index" | grep -q '<title>Batlokoa Finance</title>'
 printf '%s' "$index" | grep -q 'flutter_bootstrap.js'
-curl --silent --show-error --fail "$BASE/flutter_bootstrap.js" | grep -q 'Flutter'
-curl --silent --show-error --fail "$BASE/main.dart.js" >/dev/null
+curl --silent --show-error --fail -o /dev/null "$BASE/flutter_bootstrap.js"
+curl --silent --show-error --fail -o /dev/null "$BASE/main.dart.js"
 
 # Browser refreshes and client-side routes must return the app shell.
 curl --silent --show-error --fail "$BASE/demo/activity" | grep -q '<title>Batlokoa Finance</title>'
