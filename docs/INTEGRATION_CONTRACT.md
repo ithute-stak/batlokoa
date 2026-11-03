@@ -182,3 +182,47 @@ Tests use a disposable PostgreSQL instance to verify issuance, separate CSRF pro
 7. Preserve the official Batlokoa Financial Services logo and verified brand palette throughout the mobile/web application; the backend session changes do not modify visual branding.
 
 IthutePay remains disconnected and all write actions remain disabled.
+
+## Phase 10: opt-in OIDC Authorization Code + PKCE browser login
+
+The Batlokoa FastAPI gateway now provides **disabled-by-default** endpoints:
+`GET /api/v1/auth/login`, `GET /api/v1/auth/callback`,
+`GET /api/v1/auth/session`, and `POST /api/v1/auth/logout`.
+Without a trusted server-injected `AuthRouteConfig`, each returns HTTP 503.
+
+The login service generates high-entropy state, nonce and S256 PKCE challenge,
+then redirects to a preconfigured HTTPS authorization endpoint. A server-side
+`LoginTransactionStore` protocol is required to atomically consume each state
+exactly once; do **not** use an unshared per-process dictionary in deployment.
+The login-state cookie uses `Secure; HttpOnly; SameSite=Lax` for the cross-site
+top-level IdP return.
+
+The callback checks matching state/cookie, consumes the pending transaction,
+then performs an injected **backchannel** code exchange. A pinned JWKS verifier
+must validate the RS256 central access token (Batlokoa audience, immutable
+subject and central session ID) and a separately signed OIDC ID token including
+its original nonce and matching subject. Only then may an already linked
+customer receive a short-lived, opaque, HttpOnly, Secure, SameSite=Strict
+Batlokoa session cookie. Customer loans and payments are **not** activated by
+creating such a session.
+
+The callback redirects only to the preconfigured Batlokoa origin and never
+puts tokens in URLs. A separate Secure, SameSite=Strict CSRF proof cookie is
+readable by same-origin JavaScript; authenticated state-changing requests must
+send that proof in the `X-CSRF-Token` header, matching the cookie and stored
+CSRF digest, with an exact same-origin `Origin` header. Logout revokes the
+session and clears session/CSRF cookies. Session status returns only an
+`authenticated` boolean with no customer personal information.
+
+**This is not production login.** The real !thute Auth client registration,
+approved redirects, pinned discovery/JWKS adapter, token endpoint client,
+persistent single-use OIDC transaction store, production database migration,
+central revocation hook, user consent and borrower proof integration remain
+pending. All components are injected in the automated tests; none is
+provisioned automatically at runtime. The current Flutter sign-in remains
+explicitly demo-only. Do not store OAuth tokens in Flutter, localStorage,
+URLs, browser logs or analytics.
+
+Customer branding must continue to inherit the official Batlokoa logo and
+approved palette when the assets are available; this phase does not change UI
+artwork. IthutePay payments remain disabled.
