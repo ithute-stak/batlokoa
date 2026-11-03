@@ -5,3 +5,8 @@
 !deploy/
 !deploy/nginx.conf
 !Dockerfile.web
+!backend/
+!backend/app/
+!backend/app/**
+!backend/requirements.txt
+!Dockerfile.gateway

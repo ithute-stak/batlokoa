@@ -92,3 +92,24 @@ The staging auth assembly composes approved OIDC client metadata, the pinned JWK
 The new read-only `inspect_staging_schema` checks for all five required PostgreSQL tables and essential uniqueness/foreign-key constraints after a privileged migration. It never applies migrations or enables live endpoints. CI runs this against an isolated disposable PostgreSQL schema, including deliberate missing-constraint scenarios.
 
 `ApprovedJwksSnapshot` accepts only a separately approved static RSA/RS256 public-key set, supports overlapping key IDs during a reviewed rotation, and refuses unknown, duplicated or unsupported signing keys. No real !thute Auth keys are included, fetched or activated. JWKS retrieval policy, staging client registration, revocation notifications, deployment privileges and live borrower authorization still require separate verification. All customer financial endpoints and IthutePay remain disabled.
+
+## Phase 15: localhost-only staging preview and acceptance tests
+
+The repository now contains `Dockerfile.gateway`, `compose.staging.yml` and `scripts/smoke_staging.sh`. The Compose stack packages the existing static Flutter Web preview and a separate **disabled** FastAPI gateway into independent containers, with both exposed only on `127.0.0.1` by default. It provides **no production credentials**, no database provisioning, no authenticated session configuration, no LoanHub connection and no payment capability. It is not a public TLS deployment.
+
+### Reproduce in an isolated development or staging host
+
+Build the Flutter Web artifact using a reviewed Flutter toolchain, then run:
+
+```sh
+flutter pub get
+flutter build web --release
+docker compose -f compose.staging.yml config --quiet
+docker compose -f compose.staging.yml up -d --build
+bash scripts/smoke_staging.sh
+docker compose -f compose.staging.yml down --remove-orphans --volumes
+```
+
+The staging smoke script verifies the Flutter site and API health, confirms `/api/v1/capabilities` reports every financial feature disabled, and checks that all sensitive auth, loan, wallet and payment endpoints still return HTTP 503. The same stack test is part of GitHub Actions and fails if anything unexpectedly becomes available.
+
+**Operational limitations:** The gateway preview does not share the Flutter Nginx origin, and the web UI remains demo-only. A public production deployment requires externally managed HTTPS, registered OIDC callback, real provider discovery/JWKS, reviewed database migrations and credentials, end-to-end authenticated browser tests, tenant-link and borrower-role authorization, logging/monitoring and release rollback instructions. Never expose the preview API ports directly to the internet or enable transactions as part of this preview.

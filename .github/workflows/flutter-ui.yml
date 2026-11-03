@@ -109,6 +109,14 @@ jobs:
       - name: Smoke-test running web container
         run: bash scripts/smoke_web.sh
 
+      - name: Compose disabled staging stack and smoke-test safe defaults
+        run: |
+          set -euo pipefail
+          docker compose -f compose.staging.yml config --quiet
+          trap 'docker compose -f compose.staging.yml down --remove-orphans --volumes' EXIT
+          docker compose -f compose.staging.yml up -d --build
+          bash scripts/smoke_staging.sh
+
       - name: Upload web preview artifact
         uses: actions/upload-artifact@v4
         with:
