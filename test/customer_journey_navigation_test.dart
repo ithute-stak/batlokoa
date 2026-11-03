@@ -46,7 +46,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await enterDemo(tester);
-    await tester.ensureVisible(find.text('Electricity payment'));
+    await tester.scrollUntilVisible(
+      find.text('Electricity payment'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Electricity payment'));
     await tester.pumpAndSettle();
