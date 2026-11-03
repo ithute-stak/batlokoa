@@ -134,3 +134,9 @@ By default only `https://127.0.0.1:18443` is published. A publicly reachable sta
 Flutter now includes a separate read-only **Secure sign-in status** view and a `GatewaySessionRepository` contract that calls `GET /api/v1/auth/session` only on an operator-provided HTTPS origin, rejects malformed/disabled responses, and never sends bearer credentials or tenant IDs. By default the view uses `DisabledSessionRepository`: it performs no network operation and reports that secure sign-in is not connected. No automatic login, token storage or live loan retrieval was enabled.
 
 Outstanding external prerequisites: verified !thute Auth client registration, provider metadata, trusted HTTPS host/certificate, approved customer-session bootstrap and database configuration, loan-borrower authorization, official Batlokoa Financial Services logo and approved palette. IthutePay remains disabled.
+
+## Phase 18 — six-screen design system and responsive polish
+
+The six existing Flutter screens now use centralized **provisional** theme tokens in `lib/batlokoa_design.dart`, rather than duplicating colour values, field styling and tap-target dimensions. Typography, button minimum heights, card spacing and responsive horizontal page gutters have been standardized. Bill-service cards allow longer captions at increased text scale. The sign-in, Home, Loans, Wallet, Pay bills and Profile paths remain demo-only; no real authentication, account data or payments were activated.
+
+**Branding status:** The teal/mint palette is deliberately marked provisional in the code. Official Batlokoa Financial Services logo files and approved red/blue/grey/white hexadecimal palette still need confirmation before a brand rollout. Do not substitute a generated logo or claim these colours are official. New widget tests verify theme invariants, mobile/desktop navigation and demo disclosures, while existing CI continues to exercise API, PostgreSQL, web and HTTPS staging protections.
