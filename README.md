@@ -146,3 +146,9 @@ The six existing Flutter screens now use centralized **provisional** theme token
 Loan account detail and payment-review label/value rows now adapt to narrow cards or increased text scaling by stacking the text instead of squeezing amounts beside labels. Shared `ActionButton` no longer fixes its height to 50 pixels, allowing labels to wrap at larger accessibility font sizes. Demo sign-in and demo financial forms declare appropriate keyboard Next/Done actions and decimal numeric keyboard hints for amounts.
 
 Widget tests cover doubled text size in account details, enlarged payment summaries, 320px loan navigation and keyboard action configuration. This stage changes presentation only. It does **not** store sensitive login credentials, submit loan applications, retrieve balances or enable payments. The provisional colour palette is still not the verified Batlokoa brand.
+
+## Phase 20 — polished financial preview surfaces
+
+Home and Wallet use the shared `DemoBalanceCard`, prominently displaying `DEMO ACCOUNT` and a disclaimer alongside every fictional LSL balance. The loan summary clarifies that the 38% progress figure is illustrative, while Loan details now display a separate three-instalment `DemoRepaymentPreview` with prominent sample wording. Wallet actions use a responsive two-column/four-column `DemoWalletActions` layout with text-scaling-aware tile height. Profile provides a clearer Account and support section and a visible unverified-account lock icon.
+
+The widgets are purely presentational. Their demo action callbacks continue to navigate to non-transactional preview forms; no real bank balance, LoanHub borrower data, account verification or IthutePay payment was activated. Styling retains explicitly provisional colours until official Batlokoa brand assets are approved. Widget tests ensure all sample amounts are identified as fictional and wallet action buttons retain demo-only navigation.

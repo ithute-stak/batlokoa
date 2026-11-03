@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
+import 'demo_finance_components.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_history.dart';
@@ -140,14 +141,13 @@ class Home extends StatelessWidget{
  final ValueChanged<int> go;final ValueChanged<Widget> open;
  const Home({super.key,required this.go,required this.open});
  @override Widget build(BuildContext context)=>Content(title:'Good morning 👋',subtitle:'Welcome to Batlokoa Finance',children:[
- Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(color:teal,borderRadius:BorderRadius.circular(24)),
- child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- const Text('Sample wallet balance',style:TextStyle(color:Colors.white70)),
- const SizedBox(height:8),const Text('M 2,450.00',style:TextStyle(color:Colors.white,fontSize:34,fontWeight:FontWeight.bold)),
- const Text('Sample balance • LSL',style:TextStyle(color:Colors.white70,fontSize:12)),
- const SizedBox(height:15),Wrap(spacing:8,children:[
+ DemoBalanceCard(
+ label:'Sample wallet balance',
+ amount:'M 2,450.00',
+ disclaimer:'Fictional LSL funds • No transactions are processed',
+ actions:Wrap(spacing:8,runSpacing:8,children:[
  ActionChip(label:const Text('Add money'),onPressed:()=>open(const Transfer(action:'Add money'))),
- ActionChip(label:const Text('Send money'),onPressed:()=>open(const Transfer(action:'Send money')))]),
+ ActionChip(label:const Text('Send money'),onPressed:()=>open(const Transfer(action:'Send money'))),
  ])),
  LayoutBuilder(builder:(context,c)=>c.maxWidth>=680?Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Expanded(child:loanSummary(context)),const SizedBox(width:15),Expanded(child:quickPayments(context))]):
@@ -165,7 +165,8 @@ class Home extends StatelessWidget{
  const SizedBox(height:10),const Text('Outstanding balance'),
  const Text('M 5,800.00',style:TextStyle(fontSize:28,fontWeight:FontWeight.bold,color:teal)),
  const SizedBox(height:12),const LinearProgressIndicator(value:0.38,color:mint,backgroundColor:bg),
- const SizedBox(height:10),const Text('Next instalment M 650.00'),
+ const SizedBox(height:10),const Text('Illustrative repayment progress: 38%'),
+ const SizedBox(height:8),const Text('Sample next instalment: M 650.00'),
  const SizedBox(height:15),ActionButton('Manage loan',()=>go(1))]));
  Widget quickPayments(BuildContext context)=>CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('Quick payments',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
@@ -207,9 +208,7 @@ class LoanDetails extends StatelessWidget{
  const Detail('Instalment','M 650.00'),const Detail('Next due','15 Nov 2026'),
  const Detail('Status','Active'),const SizedBox(height:20),
  ActionButton('Repay loan',()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const Transfer(action:'Repay loan')))),
- const SizedBox(height:18),const Text('Upcoming instalments',style:TextStyle(fontWeight:FontWeight.bold)),
- const Detail('15 Nov 2026','M 650.00'),const Detail('15 Dec 2026','M 650.00'),
- const Detail('15 Jan 2027','M 650.00'),
+ const SizedBox(height:18),const DemoRepaymentPreview(),
   ])));
 }
 class ApplyLoan extends StatefulWidget{const ApplyLoan({super.key});@override State<ApplyLoan> createState()=>_ApplyLoanState();}
@@ -259,14 +258,12 @@ class _ApplyLoanState extends State<ApplyLoan>{
 class Wallet extends StatelessWidget{
  final ValueChanged<Widget> open;const Wallet({super.key,required this.open});
  @override Widget build(BuildContext context)=>Content(title:'My wallet',subtitle:'Money management',children:[
- Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(color:teal,borderRadius:BorderRadius.circular(22)),
- child:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- Text('Sample wallet balance',style:TextStyle(color:Colors.white70)),
- SizedBox(height:10),Text('M 2,450.00',style:TextStyle(color:Colors.white,fontSize:34,fontWeight:FontWeight.bold)),
- Text('Fictional amount • Not available for withdrawal',style:TextStyle(color:Colors.white70))])),
- CardBox(child:Wrap(spacing:10,runSpacing:10,children:[
- for(final a in ['Add money','Send money','Withdraw','Repay loan'])
- OutlinedButton(onPressed:()=>open(Transfer(action:a)),child:Text(a))])),
+ const DemoBalanceCard(
+ label:'Sample wallet balance',
+ amount:'M 2,450.00',
+ disclaimer:'Fictional amount • Not available for withdrawal'),
+ CardBox(child:DemoWalletActions(
+ onAction:(action)=>open(Transfer(action:action)))),
  CardBox(child:Column(children:[
  const Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward),
  const Divider(),const Transaction('LEC prepaid','28 Oct 2026','− M 200.00',Icons.bolt),
@@ -355,8 +352,10 @@ class Profile extends StatelessWidget{
  @override Widget build(BuildContext context)=>Content(title:'My profile',subtitle:'Your account and security',children:[
  const CardBox(child:ListTile(contentPadding:EdgeInsets.zero,
  leading:CircleAvatar(backgroundColor:bg,child:Icon(Icons.person,color:teal)),
- title:Text('Demo Customer'),subtitle:Text('Not verified • Sample account'))),
- CardBox(child:Column(children:[
+ title:Text('Demo Customer'),subtitle:Text('Not verified • Sample account'),
+ trailing:Icon(Icons.lock_outline,color:teal))),
+ CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+ const Padding(padding:EdgeInsets.only(bottom:12),child:Text('Account and support',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold))),
  for(final item in <({String name,IconData icon,String text})>[
  (name:'Personal information',icon:Icons.person_outline,text:'Verified customer information will appear here.'),
  (name:'Identity verification',icon:Icons.verified_user_outlined,text:'KYC and document uploads will connect to the identity service.'),
