@@ -126,6 +126,9 @@ jobs:
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
             -subj "/CN=localhost" -keyout "$TEST_CERT_DIR/privkey.pem" \
             -out "$TEST_CERT_DIR/fullchain.pem" >/dev/null 2>&1
+          # CI-only disposable key: the restricted edge cannot traverse mktemp 0700 directories.
+          chmod 755 "$TEST_CERT_DIR"
+          chmod 644 "$TEST_CERT_DIR/fullchain.pem" "$TEST_CERT_DIR/privkey.pem"
           docker compose -f compose.staging.https.yml config --quiet
           docker compose -f compose.staging.https.yml up -d --build
           bash scripts/smoke_staging_https.sh
