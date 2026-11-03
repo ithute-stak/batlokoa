@@ -241,3 +241,21 @@ CI now runs the OIDC login transaction tests against disposable PostgreSQL, incl
 Before live staging, confirm official OIDC discovery metadata, approved Batlokoa audience and client registration, secure token endpoint authentication requirements, a managed Fernet key, database migrations and least-privilege grants, JWKS rotation, OAuth callback CSRF/origin safeguards, and account-link proof controls. Do not enable financial operations simply because login works.
 
 Customer UI branding must continue to use official Batlokoa Financial Services artwork and its verified colour palette when available; this backend stage does not modify the interface.
+
+## Phase 12: strict provider discovery and staging registration preflight
+
+A public lookup of `https://auth.ithute.co.ls/.well-known/openid-configuration` and the public JWKS document on 3 November 2026 did **not return an accessible document** in the available environment. The actual !thute Auth authorization/token/JWKS endpoints, Batlokoa client registration, allowed redirect URIs and token authentication mode are therefore **unverified**. The values in the Phase 12 tests are illustrative simulated metadata, NOT a claim about the live provider.
+
+`backend/app/oidc_discovery.py` implements bounded, redirect-disabled HTTPS discovery against an explicitly approved issuer (currently expected to be `https://auth.ithute.co.ls`). Its strict parser rejects issuer mismatches, cross-origin authorization/token/JWKS URLs, unsupported signing methods, missing authorization-code grant, missing S256 PKCE or unsupported token endpoint authentication. The current Phase 11 exchanger supports a public PKCE client only, so it requires explicit `none` in `token_endpoint_auth_methods_supported`. If the actual provider requires `client_secret_basic`, `private_key_jwt` or another mode, **do not relax the check**: implement and test the required client authentication separately.
+
+`backend/app/staging_oidc.py` defines an immutable preflight plan requiring an explicitly approved client ID, manually reviewed provider metadata, a server-approved Batlokoa tenant UUID and an **exact** registered HTTPS callback at `<Batlokoa origin>/api/v1/auth/callback`. The plan is a staging readiness report, **not** an app bootstrap or a toggle for live financial data; `financial_access_enabled` remains false. No code in this phase installs `AuthRouteConfig`, configures the production IdP, connects the customer-loan endpoint, or enables payments.
+
+Provider and registration verification needed for a real staging deployment:
+
+1. Fetch the official discovery metadata and signing-key document using controlled server egress, retaining a reviewed copy of the exact issuer, approved URLs, signing algorithms, PKCE capabilities and token-authentication methods.
+2. Obtain evidence that the Batlokoa client ID/audience and its exact callback are registered with !thute Auth. Do not reuse LoanHub's product audience.
+3. Establish a managed JWKS key provider with bounded cache, rotation and outage controls; configure separate least-privileged PostgreSQL sessions, persistent OIDC transactions, and encryption keys from secret management.
+4. Run real provider sandbox login and borrower-to-tenant authorization proof. Test revocation and simultaneous callbacks, external origin rejection, and errors before any production launch.
+5. Preserve all Batlokoa Financial Services logo and approved brand colour requirements; no unverified artwork or approximate HEX value is introduced here.
+
+IthutePay payment processing remains disabled. Passing a discovery preflight is not proof that customer funds, balances or loans are ready for live operation.
