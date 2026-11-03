@@ -47,10 +47,26 @@ class LoginTransactionStore(Protocol):
     async def consume(self, *, state: str) -> PendingLogin | None: ...
 
 
+@dataclass(frozen=True)
+class ExchangedTokens:
+    access_token: str
+    id_token: str
+
+
 class AuthCodeExchanger(Protocol):
     async def exchange(self, *, code: str, code_verifier: str,
-                       redirect_uri: str) -> str:
-        """Backchannel code exchange; return an access token, never browser-facing."""
+                       redirect_uri: str) -> ExchangedTokens:
+        """Backchannel code exchange; return tokens only to server-side code."""
+        ...
+
+
+class IdTokenVerifier(Protocol):
+    def verify(self, id_token: str, *, expected_nonce: str,
+               expected_subject: str) -> None:
+        """Validate signed OIDC ID token: issuer, aud, exp, iat, nonce, sub.
+
+        An unimplemented or permissive verifier MUST NOT be injected.
+        """
         ...
 
 
@@ -70,6 +86,7 @@ class OidcLoginService:
     verifier: CentralAuthVerifier
     transactions: LoginTransactionStore
     exchanger: AuthCodeExchanger
+    id_token_verifier: IdTokenVerifier
     sessions: SessionIssuer
 
     def __post_init__(self) -> None:
@@ -121,14 +138,15 @@ class OidcLoginService:
         if pending is None or not hmac.compare_digest(pending.state, state):
             raise LoginDenied("Expired or already used login transaction")
         try:
-            access_token = await self.exchanger.exchange(
+            tokens = await self.exchanger.exchange(
                 code=code, code_verifier=pending.code_verifier,
                 redirect_uri=self.redirect_uri,
             )
-            claims = self.verifier.verify(access_token)
+            claims = self.verifier.verify(tokens.access_token)
+            self.id_token_verifier.verify(
+                tokens.id_token, expected_nonce=pending.nonce,
+                expected_subject=claims.sub,
+            )
         except Exception as exc:
             raise LoginUnavailable("Authentication exchange failed") from exc
-        # The IdP MUST return a signed ID-token with validated OIDC nonce in a
-        # production exchanger. The exchanged access token alone does not
-        # authenticate the browser's nonce. Block activation until that exists.
-        raise LoginUnavailable("Verified OIDC ID-token nonce integration not configured")
+        return await self.sessions.issue(claims=claims, tenant_id=self.tenant_id)
