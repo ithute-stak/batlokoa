@@ -72,3 +72,13 @@ Upload the contents of `build/web` to a TLS-enabled static host serving `batloko
 ### Before production
 
 Confirm `flutter analyze`, `flutter test` and `flutter build web --release` pass on GitHub Actions. These commands have **not been run successfully by the authoring assistant** in this iteration. Validate at narrow viewports and with text scaling, keyboard navigation and screen readers. Then add backend state, authorization, error handling, service fees, beneficiary verification and compliance requirements.
+
+## Phase 6: Customer-loan Flutter presentation boundary
+
+- `lib/customer_loan_data.dart` defines validated, read-only Batlokoa gateway loan summaries denominated in LSL minor units.
+- `lib/customer_loans_screen.dart` provides dedicated loading, empty, error/retry, and verified loan-list states. No fabricated monetary values are displayed when the repository is disabled or unavailable.
+- The main **My loans** screen offers a **View verified loans** entry point and explicitly labels existing loan figures as **demo only**.
+- The default `DisabledCustomerLoanRepository` intentionally fails closed. No browser API token, LoanHub administrative credential, real account, payment rail, or production authentication flow is added.
+- Future production repository wiring must use an approved same-origin authenticated session to Batlokoa's gateway. Do not set API authorization by injecting tenant/customer IDs from the Flutter UI.
+- Loan details and repayments remain demonstration-only; real instalment terms require separately verified LoanHub detail contracts, and IthutePay remains disabled.
+- Official Batlokoa Financial Services logo, artwork and colour values must be applied only using verified company assets. Current code still contains provisional colours; this phase does not claim a completed official brand rollout.
