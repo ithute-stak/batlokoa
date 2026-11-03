@@ -17,3 +17,10 @@ CREATE INDEX IF NOT EXISTS ix_batlokoa_sessions_link
   ON "public".customer_sessions (link_id, expires_at);
 CREATE INDEX IF NOT EXISTS ix_batlokoa_sessions_central_sid
   ON "public".customer_sessions (central_sid);
+
+-- Durable central IdP session revocations prevent reissuing local sessions
+-- against a revoked central session ID.
+CREATE TABLE IF NOT EXISTS "public".customer_central_session_revocations (
+  central_sid UUID PRIMARY KEY,
+  revoked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
