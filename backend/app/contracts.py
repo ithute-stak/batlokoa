@@ -1,7 +1,6 @@
 """Internal API contracts. These do NOT assert LoanHub or IthutePay endpoint compatibility."""
 from __future__ import annotations
 
-from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
 
