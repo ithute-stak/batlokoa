@@ -10,6 +10,8 @@ for attempt in $(seq 1 40); do
   fi
   if [ "$attempt" -eq 40 ]; then
     echo "HTTPS staging edge failed health check" >&2
+    docker compose -f compose.staging.https.yml ps >&2 || true
+    docker compose -f compose.staging.https.yml logs --tail=100 batlokoa-edge batlokoa-web-preview >&2 || true
     exit 1
   fi
   sleep 1
