@@ -134,3 +134,27 @@ Unit tests exercise valid matching proofs, cross-tenant denial, role mismatch, s
 - Ensure token/session issuance does not reuse admin/staff credentials as a customer borrower session.
 - Review account recovery, unlinking, revocation, stale/locked accounts, simultaneous linking and support escalation.
 - Keep all Batlokoa UI branding sourced from official company logo and verified brand colours rather than temporary placeholders.
+
+## Phase 8: persistent PostgreSQL borrower mapping and revocation
+
+Files: `backend/migrations/001_customer_account_links.sql`, `backend/app/link_store.py`, and `backend/tests/test_link_store_postgres.py`.
+
+The new **opt-in** async PostgreSQL store implements both the `AtomicLinkStore` and `CustomerDirectory` contracts with two tables:
+
+- `customer_account_links`: immutable mapping from approved central issuer+subject to one LoanHub borrower and tenant; globally unique issuer/subject, tenant/borrower, one-time proof digest and consent-reference digest. Revoked entries are **retained** to prevent silent reassignment.
+- `customer_account_link_events`: separate append-only link/revoke audit records, written in the same database transaction as the corresponding mapping change. Do not grant runtime DELETE/UPDATE on audit events.
+
+Only SHA-256 proof and consent reference digests are stored, not raw central access tokens, passwords, National IDs or original evidence strings. Operational consent documents and proof records must be maintained by a separately approved evidence service with appropriate access and retention controls; a digest alone does not constitute a complete compliance record.
+
+### Safe operation
+
+1. Apply the SQL migration through a separately privileged migration job; application startup does **not** create or modify tables.
+2. Supply a dedicated least-privileged PostgreSQL connection pool via trusted server bootstrap. There is **no** database connection in the public app by default and no environment flag to bypass authentication.
+3. Attach the store to `AccountLinkService` only after verified borrower-role proof, genuine customer consent and independent Batlokoa tenant membership validation are available.
+4. A verified user's own revocation can be performed through the internal `revoke_self` method. No public revocation endpoint is exposed. Revocation removes the mapping from active lookup immediately, but the uniqueness reservation stays in place.
+5. To support future recovery/relink, introduce a separately reviewed dual-authorisation procedure and append-only audit process. Do not delete old mappings or permit silent reassignment.
+6. Use database privileges, encrypted backups, secret management, audit monitoring and migration rollback plans in production.
+
+The GitHub Actions workflow runs separate **real PostgreSQL tests** (temporary isolated schemas) for unique keys, concurrent linking, audit transaction rollback, linked lookup, revocation and replay rejection. Existing gateway and Flutter checks continue independently.
+
+**Remaining blockers:** real identity/session token broker, signed borrower proof, tenant verifier, compliance evidence storage, production database migration, and staging acceptance tests. `GET /api/v1/me/loans` remains disabled, and IthutePay still cannot move money.
