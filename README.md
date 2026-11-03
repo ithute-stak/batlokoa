@@ -32,3 +32,30 @@ Narrow screens use a bottom navigation bar; wider screens use a navigation rail 
 ## Brand
 
 The UI uses a provisional deep-teal and mint visual identity until official Batlokoa artwork is supplied.
+
+## Next UI iteration
+
+The additional customer-preview flows are implemented in `lib/customer_flows.dart`:
+
+- Three-step identity-verification preview with acknowledgement checkbox
+- Notifications page with unread filter
+- Security and communication preferences preview
+- Help centre with FAQs and a local-only support form
+
+These flows are reachable from **Profile**. They do not capture real IDs, change credentials, or send requests. Real provider and identity integration remains a separate task.
+
+### Responsive validation
+
+The test suite now exercises 320, 375, 430, 768, 1024 and 1440 logical-pixel viewports, in addition to core screen-navigation checks. GitHub Actions is configured to run analyzer, tests and web build. Passing status must be confirmed in the Actions tab.
+
+### Web deployment
+
+For a test web build:
+
+```bash
+flutter pub get
+flutter test
+flutter build web --release
+```
+
+Upload the contents of `build/web` to a TLS-enabled static host serving `batlokoa.co.ls`, with history fallback to `index.html` for client-side routes. Configure DNS, TLS certificates, security headers, release caching and an explicit environment-specific API endpoint before live release. Merely declaring the domain here does not register or configure it.
