@@ -49,7 +49,7 @@ class GatewaySessionRepository implements CustomerSessionRepository {
       );
       if (response.statusCode != 200 ||
           response.bodyBytes.length > 4096 ||
-          !response.headers['content-type']!
+          !(response.headers['content-type'] ?? '')
               .toLowerCase().contains('application/json')) {
         throw const SessionStatusUnavailable();
       }
