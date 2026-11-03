@@ -152,3 +152,9 @@ Widget tests cover doubled text size in account details, enlarged payment summar
 Home and Wallet use the shared `DemoBalanceCard`, prominently displaying `DEMO ACCOUNT` and a disclaimer alongside every fictional LSL balance. The loan summary clarifies that the 38% progress figure is illustrative, while Loan details now display a separate three-instalment `DemoRepaymentPreview` with prominent sample wording. Wallet actions use a responsive two-column/four-column `DemoWalletActions` layout with text-scaling-aware tile height. Profile provides a clearer Account and support section and a visible unverified-account lock icon.
 
 The widgets are purely presentational. Their demo action callbacks continue to navigate to non-transactional preview forms; no real bank balance, LoanHub borrower data, account verification or IthutePay payment was activated. Styling retains explicitly provisional colours until official Batlokoa brand assets are approved. Widget tests ensure all sample amounts are identified as fictional and wallet action buttons retain demo-only navigation.
+
+## Phase 21 — connected demo customer journeys
+
+The **Home → Loans → Loan details → Sample activity → Back to loans** journey now provides clear demo navigation through the existing screens. Home recent-activity rows open the searchable fictional transaction-history view. Home and Pay bills share the same bill-service routing: the Transfers shortcut opens a demo Send money form; More explicitly shows a disabled preview; other services open existing bill payment previews. This corrects the earlier difference between Home and Pay bills shortcuts.
+
+Dedicated Flutter widget tests cover this cross-screen navigation, the return path and both shortcut exceptions. All account balances, loan schedules, transaction histories and payment reviews remain demo-only; nothing is submitted to LoanHub, !thute Auth or IthutePay.
