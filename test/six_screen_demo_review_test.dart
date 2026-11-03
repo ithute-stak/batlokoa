@@ -9,7 +9,7 @@ void main() {
     expect(find.textContaining('Entered credentials are not submitted'),
         findsOneWidget);
     final field = tester.widget<TextField>(
-      find.widgetWithText(TextField, 'Password'),
+      find.byType(TextField).last,
     );
     expect(field.obscureText, isTrue);
     await tester.tap(find.byTooltip('Show password'));
