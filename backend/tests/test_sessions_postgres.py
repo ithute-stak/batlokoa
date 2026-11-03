@@ -129,6 +129,8 @@ async def test_central_sid_revocation_kills_all_associated_sessions(stores):
     assert await sessions.resolve(a.session_token) is None
     assert await sessions.resolve(b.session_token) is None
     assert await sessions.revoke_central_session(CENTRAL_SID) == 0
+    with pytest.raises(SessionDenied):
+        await sessions.issue(claims=claims(), tenant_id=TENANT)
 
 
 @pytest.mark.asyncio
@@ -138,7 +140,7 @@ async def test_session_expiration_checked_at_database_read(stores):
     grant = await sessions.issue(claims=claims(), tenant_id=TENANT)
     async with pool.acquire() as connection:
         await connection.execute(
-            f'UPDATE "{schema}".customer_sessions SET expires_at=now() - interval \'1 minute\''
+            f'UPDATE "{schema}".customer_sessions SET created_at=now() - interval \'2 hours\', expires_at=now() - interval \'1 minute\''
         )
     assert await sessions.resolve(grant.session_token) is None
 
