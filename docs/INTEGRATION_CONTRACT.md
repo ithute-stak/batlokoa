@@ -66,3 +66,15 @@ The repository does not yet contain a trusted key-discovery lifecycle, real pers
 ### Test scope
 
 `backend/tests/test_identity.py` tests valid signed JWTs, wrong issuer and audience, invalid or expired claims, wrong signing keys, unsigned tokens, absent customer mappings and cross-tenant isolation. These are local unit tests using test-generated RSA keys, not successful live SSO or LoanHub connectivity.
+
+## Phase 3: tenant-scoped read-only LoanHub service (contract-testing stage)
+
+`backend/app/loan_reads.py` now supplies an internal **read-only orchestration service**. It accepts claims only after they have been verified by the earlier cryptographic JWT validator, derives the customer from the protected server mapping, requires a configured Batlokoa tenant, and passes only that mapped tenant/customer identity to a LoanHub adapter.
+
+The service rejects unauthorized or cross-tenant mappings before making any upstream request. Upstream responses must match the strict LSL `LoanSummary` shape; negative balances, invalid currencies, duplicate loan identifiers, non-list results and excessive record counts are rejected rather than shown as authoritative data. Empty loan lists are valid and do not become fabricated demo balances.
+
+**Not yet live:** The real LoanHub endpoint, response schema, authorization scopes and customer model are not verified. The repository's current `GET /api/v1/me/loans` continues returning HTTP 503. No signed JWT or test stub can bypass that HTTP route. Tests use an in-memory read-only adapter only.
+
+### Required next implementation
+
+Verify LoanHub's actual route path, schema, tenancy checks and service identity, then add an HTTP adapter that translates its real response into `LoanSummary` and call this service only through an authenticated, configured, authorization-gated endpoint. Add provider contract tests, audit logging and strict timeouts. Actual customer data must never be mixed with the Flutter sample dashboard.
