@@ -78,3 +78,21 @@ The service rejects unauthorized or cross-tenant mappings before making any upst
 ### Required next implementation
 
 Verify LoanHub's actual route path, schema, tenancy checks and service identity, then add an HTTP adapter that translates its real response into `LoanSummary` and call this service only through an authenticated, configured, authorization-gated endpoint. Add provider contract tests, audit logging and strict timeouts. Actual customer data must never be mixed with the Flutter sample dashboard.
+
+## Phase 4: verified LoanHub v2 borrower loan-list adapter
+
+Inspected actual LoanHub repository `ithute-stak/LoanHub` on November 3, 2026:
+
+- `apps/backend/main.py` includes the API router under `/api/v1`.
+- `apps/backend/routers/loans.py` declares `GET /loans/`. The `BORROWER` role is restricted at the query to `current_user.borrower_profile.id`. Company staff and superadmin roles have different access and must **not** be used as customer tokens.
+- `apps/backend/database/schemas/loan.py` defines `LoanRead` with UUID `id`, `company_id`, `borrower_id`, `status` and decimal `balance`.
+
+`backend/app/loanhub_adapter.py` implements a read-only HTTPS adapter for this **verified endpoint**. It requires a backend-provisioned LoanHub **borrower-scoped token** for the mapped borrower, never an admin token, and compares every returned `company_id` and `borrower_id` to the server mapping. It validates decimal LSL amounts without floating-point rounding; rejects malformed, duplicated and cross-tenant results; enforces a response size and bounded request timeout; and does not follow redirects.
+
+**Not wired into the public Batlokoa API.** The crucial missing capability is a trusted way to obtain and validate a real LoanHub borrower-role session for an authenticated Batlokoa customer, including the subject/borrower link and tenant mapping. The consumer `GET /api/v1/me/loans` route therefore **continues to return 503**. The adapter does not ship with any secrets. It does not use the `X-Company-ID` staff selector or send any tenant header as authority.
+
+Production data validation remains required: prove that the borrower token maps to the precise LoanHub borrower, confirm the expected company UUID and list shape against a restricted staging instance, handle datasets larger than 99 results with a safe paginated design, and introduce auditability, availability monitoring and customer-consent controls. Do not expose the demo app as a banking service.
+
+### Brand system requirement
+
+All new Batlokoa customer screens must inherit the company's approved colour values and official logo from verified brand assets. The payment and loan services do not dictate Batlokoa's frontend appearance. Do not select approximate brand HEX values until the official logo or brand guide has been inspected.
