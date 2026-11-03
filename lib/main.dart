@@ -118,7 +118,8 @@ class Home extends StatelessWidget{
  ])),
  ]);
  Widget loanSummary(BuildContext context)=>CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- const Text('My active loan (demo)',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+ const Text('My active loan',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+ const Text('Demo amounts only',style:TextStyle(fontSize:12,color:Colors.black54)),
  const SizedBox(height:10),const Text('Outstanding balance'),
  const Text('M 5,800.00',style:TextStyle(fontSize:28,fontWeight:FontWeight.bold,color:teal)),
  const SizedBox(height:12),const LinearProgressIndicator(value:0.38,color:mint,backgroundColor:bg),
@@ -132,15 +133,6 @@ class Loans extends StatelessWidget{
  final ValueChanged<Widget> open;const Loans({super.key,required this.open});
  @override Widget build(BuildContext context)=>Content(title:'My loans',subtitle:'Borrowing and repayments',children:[
  CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- const Text('My verified loans',style:TextStyle(fontSize:20,fontWeight:FontWeight.bold)),
- const SizedBox(height:8),
- const Text('Live loan information requires customer authentication and an approved LoanHub session. No demo balances are shown in the verified-loan view.'),
- const SizedBox(height:14),
- ActionButton('View verified loans',()=>open(const CustomerLoansScreen())),
- ])),
- const Text('DEMO LOANS ONLY — The figures below are fictional and not your real loan account.',
- style:TextStyle(fontWeight:FontWeight.w600)),
- CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('Current balance (demo)'),const Text('M 5,800.00',style:TextStyle(fontSize:31,fontWeight:FontWeight.bold,color:teal)),
  const SizedBox(height:12),const Detail('Product','Personal loan'),const Detail('Status','Active'),
  const Detail('Next due','15 Nov 2026'),const Detail('Instalment','M 650.00'),
@@ -151,6 +143,17 @@ class Loans extends StatelessWidget{
  const SizedBox(height:16),ActionButton('Start application',()=>open(const ApplyLoan()))])),
  const CardBox(child:ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.check_circle,color:mint),
  title:Text('Previous personal loan'),subtitle:Text('Settled • 2025'),trailing:Text('M 3,000'))),
+ const Text('Demo loan balances above are sample amounts only.'),
+ CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+ const Text('My verified loans',style:TextStyle(fontSize:20,fontWeight:FontWeight.bold)),
+ const SizedBox(height:8),
+ const Text('Live loan information requires customer authentication and an approved LoanHub session. No demo balances are shown in the verified-loan view.'),
+ const SizedBox(height:14),
+ ActionButton('View verified loans',()=>open(const CustomerLoansScreen())),
+ ])),
+ const Text('DEMO LOANS ONLY — The figures below are fictional and not your real loan account.',
+ style:TextStyle(fontWeight:FontWeight.w600)),
+
   ]);
 }
 class LoanDetails extends StatelessWidget{
