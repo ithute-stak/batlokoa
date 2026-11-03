@@ -34,6 +34,7 @@ services:
 
   batlokoa-edge:
     image: nginx:stable-alpine
+    user: "101:101"
     depends_on:
       - batlokoa-web-preview
       - batlokoa-gateway-preview
@@ -48,6 +49,6 @@ services:
     security_opt:
       - no-new-privileges:true
     tmpfs:
-      - /var/cache/nginx
-      - /var/run
-      - /tmp
+      - /var/cache/nginx:uid=101,gid=101
+      - /var/run:uid=101,gid=101
+      - /tmp:uid=101,gid=101
