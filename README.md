@@ -82,3 +82,7 @@ Confirm `flutter analyze`, `flutter test` and `flutter build web --release` pass
 - Future production repository wiring must use an approved same-origin authenticated session to Batlokoa's gateway. Do not set API authorization by injecting tenant/customer IDs from the Flutter UI.
 - Loan details and repayments remain demonstration-only; real instalment terms require separately verified LoanHub detail contracts, and IthutePay remains disabled.
 - Official Batlokoa Financial Services logo, artwork and colour values must be applied only using verified company assets. Current code still contains provisional colours; this phase does not claim a completed official brand rollout.
+
+## Staging OIDC assembly
+
+The staging auth assembly composes approved OIDC client metadata, the pinned JWKS provider, PostgreSQL-backed login/session stores and secure token exchange. It does not activate login routes or financial operations. Real provider discovery and Batlokoa registration remain unverified. The normal app stays disabled by default.
