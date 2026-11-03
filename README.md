@@ -59,3 +59,16 @@ flutter build web --release
 ```
 
 Upload the contents of `build/web` to a TLS-enabled static host serving `batlokoa.co.ls`, with history fallback to `index.html` for client-side routes. Configure DNS, TLS certificates, security headers, release caching and an explicit environment-specific API endpoint before live release. Merely declaring the domain here does not register or configure it.
+
+## UI iteration: transaction review and stronger loan forms
+
+- Added `lib/payment_review.dart` as a separate transaction-review route.
+- Wallet money actions and bill-payment forms now pass entered amounts/references to a review screen before a **demo-only** confirmation.
+- The customer can return to the form using `Edit details`.
+- Loan application step 2 rejects empty income sources and nonpositive income; its review step shows what the customer entered.
+- Added `test/payment_review_test.dart` for review and customer-navigation coverage.
+- **No money or credit request is submitted**. This is not a wallet ledger, licensed payment service or production KYC flow.
+
+### Before production
+
+Confirm `flutter analyze`, `flutter test` and `flutter build web --release` pass on GitHub Actions. These commands have **not been run successfully by the authoring assistant** in this iteration. Validate at narrow viewports and with text scaling, keyboard navigation and screen readers. Then add backend state, authorization, error handling, service fees, beneficiary verification and compliance requirements.
