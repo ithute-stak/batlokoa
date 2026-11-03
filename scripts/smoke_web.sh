@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
 
 PORT="${BATLOKOA_SMOKE_PORT:-18088}"
 CONTAINER="batlokoa-smoke-$$"
@@ -28,17 +28,18 @@ if [ "$ready" != 1 ]; then
 fi
 
 index="$(curl --silent --show-error --fail "$BASE/")"
-printf '%s' "$index" | grep -q '<title>Batlokoa Finance</title>'
-printf '%s' "$index" | grep -q 'flutter_bootstrap.js'
+grep -q '<title>Batlokoa Finance</title>' <<< "$index"
+grep -q 'flutter_bootstrap.js' <<< "$index"
 curl --silent --show-error --fail -o /dev/null "$BASE/flutter_bootstrap.js"
 curl --silent --show-error --fail -o /dev/null "$BASE/main.dart.js"
 
 # Browser refreshes and client-side routes must return the app shell.
-curl --silent --show-error --fail "$BASE/demo/activity" | grep -q '<title>Batlokoa Finance</title>'
+spa="$(curl --silent --show-error --fail "$BASE/demo/activity")"
+grep -q '<title>Batlokoa Finance</title>' <<< "$spa"
 
 # Confirm application resources have security headers.
 headers="$(curl --silent --show-error --fail -D - -o /dev/null "$BASE/")"
-printf '%s\n' "$headers" | grep -qi 'x-content-type-options: nosniff'
-printf '%s\n' "$headers" | grep -qi 'x-frame-options: DENY'
+grep -qi 'x-content-type-options: nosniff' <<< "$headers"
+grep -qi 'x-frame-options: DENY' <<< "$headers"
 
 echo "Batlokoa static web container smoke checks passed"
