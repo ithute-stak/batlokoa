@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Request
@@ -78,13 +79,14 @@ async def finish_login(request: Request, code: str = "", state: str = ""):
         response = RedirectResponse(config.public_origin.rstrip("/") + "/",
                                     status_code=303,
                                     headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
-        max_age = max(0, int((grant.expires_at - __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc)).total_seconds()))
+        max_age = max(0, int((grant.expires_at - datetime.now(timezone.utc)).total_seconds()))
         response.set_cookie(SESSION_COOKIE, grant.session_token, secure=True,
                             httponly=True, samesite="strict", max_age=max_age, path="/")
-        # CSRF proof must be returned only to the authenticated same-origin app.
-        # It is intentionally NOT placed in the redirect URL or a readable cookie.
-        # A later authenticated CSRF bootstrap route is required for writes.
+        # Double-submit CSRF proof: JavaScript may read only this proof cookie,
+        # never the HttpOnly session token. Strict Origin + header are required.
+        response.set_cookie("__Host-batlokoa_csrf", grant.csrf_token,
+                            secure=True, httponly=False, samesite="strict",
+                            max_age=max_age, path="/")
     response.delete_cookie(STATE_COOKIE, secure=True, httponly=True,
                            samesite="lax", path="/")
     return response
@@ -121,4 +123,6 @@ async def logout(request: Request):
                             headers={"Cache-Control": "no-store"})
     response.delete_cookie(SESSION_COOKIE, secure=True, httponly=True,
                            samesite="strict", path="/")
+    response.delete_cookie("__Host-batlokoa_csrf", secure=True,
+                           httponly=False, samesite="strict", path="/")
     return response
