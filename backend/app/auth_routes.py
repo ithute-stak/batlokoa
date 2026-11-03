@@ -113,6 +113,9 @@ async def logout(request: Request):
                             headers={"Cache-Control": "no-store"})
     token = request.cookies.get(SESSION_COOKIE, "")
     csrf = request.headers.get("x-csrf-token", "")
+    if not csrf or request.cookies.get('__Host-batlokoa_csrf') != csrf:
+        return JSONResponse({'code': 'CSRF_REJECTED'}, status_code=403,
+                            headers={'Cache-Control': 'no-store'})
     active = await config.sessions.resolve(
         token, csrf_token=csrf, require_csrf=True)
     if active is None:
