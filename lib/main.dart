@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
+import 'activity_details.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -322,19 +323,28 @@ class Detail extends StatelessWidget{
 }
 class Transaction extends StatelessWidget{
  final String title,date,amount;final IconData icon;
- const Transaction(this.title,this.date,this.amount,this.icon,{super.key});
+ final VoidCallback? onTap;
+ const Transaction(this.title,this.date,this.amount,this.icon,{super.key,this.onTap});
  @override Widget build(BuildContext context)=>ListTile(contentPadding:EdgeInsets.zero,
  leading:CircleAvatar(backgroundColor:bg,child:Icon(icon,color:teal)),
- title:Text(title),subtitle:Text(date),trailing:Text(amount,style:const TextStyle(fontWeight:FontWeight.bold)));
+ title:Text(title),subtitle:Text(date),onTap:onTap,trailing:Text(amount,style:const TextStyle(fontWeight:FontWeight.bold)));
 }
 class History extends StatelessWidget{
  const History({super.key});
- @override Widget build(BuildContext context)=>const Subpage(title:'Transaction history',child:CardBox(child:Column(children:[
- Transaction('Electricity purchase','28 Oct 2026','− M 200.00',Icons.bolt),
- Divider(),Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward),
- Divider(),Transaction('Loan repayment','24 Oct 2026','− M 650.00',Icons.account_balance),
- Divider(),Transaction('Water payment','22 Oct 2026','− M 150.00',Icons.water_drop),
- ])));
+ @override Widget build(BuildContext context)=>Subpage(
+   title:'Transaction history',
+   child:CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+     const Text('Sample activity — no real transactions',
+       style:TextStyle(color:Colors.black54)),
+     const SizedBox(height:12),
+     for(final activity in demoActivities)...[
+       Transaction(activity.title,activity.date,activity.amount,activity.icon,
+         onTap:()=>Navigator.push(context,MaterialPageRoute(
+           builder:(_)=>DemoActivityPage(activity:activity)))),
+       const Divider(),
+     ],
+   ])),
+ );
 }
 class Info extends StatelessWidget{
  final String title,body;const Info({super.key,required this.title,required this.body});
