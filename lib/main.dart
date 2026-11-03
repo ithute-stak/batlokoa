@@ -135,7 +135,7 @@ class Loans extends StatelessWidget{
  const SizedBox(height:16),ActionButton('Start application',()=>open(const ApplyLoan()))])),
  const CardBox(child:ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.check_circle,color:mint),
  title:Text('Previous personal loan'),subtitle:Text('Settled • 2025'),trailing:Text('M 3,000'))),
- ]);}
+  ]);
 }
 class LoanDetails extends StatelessWidget{
  const LoanDetails({super.key});
@@ -149,7 +149,7 @@ class LoanDetails extends StatelessWidget{
  const SizedBox(height:18),const Text('Upcoming instalments',style:TextStyle(fontWeight:FontWeight.bold)),
  const Detail('15 Nov 2026','M 650.00'),const Detail('15 Dec 2026','M 650.00'),
  const Detail('15 Jan 2027','M 650.00'),
- ]))));
+  ])));
 }
 class ApplyLoan extends StatefulWidget{const ApplyLoan({super.key});@override State<ApplyLoan> createState()=>_ApplyLoanState();}
 class _ApplyLoanState extends State<ApplyLoan>{
@@ -193,7 +193,7 @@ class _ApplyLoanState extends State<ApplyLoan>{
  }
  if(step<2){setState(()=>step++);}else{demo(context,'Loan application');}
  }),
- ]))));
+  ])));
 }
 class Wallet extends StatelessWidget{
  final ValueChanged<Widget> open;const Wallet({super.key,required this.open});
@@ -210,7 +210,7 @@ class Wallet extends StatelessWidget{
  const Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward),
  const Divider(),const Transaction('LEC prepaid','28 Oct 2026','− M 200.00',Icons.bolt),
  TextButton(onPressed:()=>open(const History()),child:const Text('View all activity'))])),
- ]);}
+  ]);
 }
 class Transfer extends StatefulWidget{final String action;const Transfer({super.key,required this.action});@override State<Transfer> createState()=>_TransferState();}
 class _TransferState extends State<Transfer>{
@@ -234,7 +234,7 @@ class _TransferState extends State<Transfer>{
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
  const SizedBox(height:20),
  ActionButton('Review transaction',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.action,amount:amountController.text.trim(),reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));}),
- ])))));
+  ]))));
 }
 const serviceList=<({String name,IconData icon})>[
  (name:'Electricity',icon:Icons.bolt),(name:'WASCO water',icon:Icons.water_drop),
@@ -264,7 +264,7 @@ class Bills extends StatelessWidget{
  Services(onTap:(s){if(s=='Transfers'){open(const Transfer(action:'Send money'));}else if(s=='More'){demo(context,'More billers');}else{open(PayService(service:s));}}),
  ])),
  const CardBox(child:Text('External providers and bill lookup APIs are not yet connected. All payment flows are demos.')),
- ]);}
+  ]);
 }
 class PayService extends StatefulWidget{final String service;const PayService({super.key,required this.service});@override State<PayService> createState()=>_PayServiceState();}
 class _PayServiceState extends State<PayService>{
@@ -286,7 +286,7 @@ class _PayServiceState extends State<PayService>{
  const Text('Biller validation, settlement and receipts require an approved provider integration.'),
  const SizedBox(height:18),
  ActionButton('Review payment',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.service,amount:amountController.text.trim(),reference:referenceController.text.trim(),method:'Wallet (demo)')));}),
- ])))));
+  ]))));
 }
 class Profile extends StatelessWidget{
  final ValueChanged<Widget> open;final VoidCallback exit;
@@ -309,7 +309,7 @@ class Profile extends StatelessWidget{
  title:const Text('Transaction history'),trailing:const Icon(Icons.chevron_right),onTap:()=>open(const History())),
  ])),
  OutlinedButton.icon(onPressed:exit,icon:const Icon(Icons.logout),label:const Text('Exit demo')),
- ]);}
+  ]);
 }
 class Subpage extends StatelessWidget{
  final String title;final Widget child;const Subpage({super.key,required this.title,required this.child});
