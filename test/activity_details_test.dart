@@ -26,6 +26,8 @@ void main() {
     expect(find.text('BTL-SAMPLE-1004'), findsOneWidget);
     expect(find.text('Sample data only'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Back to activity'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Back to activity'));
     await tester.pumpAndSettle();
     expect(find.text('Open sample'), findsOneWidget);
