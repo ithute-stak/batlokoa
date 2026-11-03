@@ -62,3 +62,20 @@ The authoring environment does not contain the Flutter or Dart SDK, so no local 
 - Secure mobile onboarding flows and authentic privacy notices
 - Verified digital receipts (only after production IthutePay integration)
 - Accessibility labels and keyboard/screen reader passes
+
+## UI iteration — searchable activity and build pipeline
+
+- Activity history is now implemented in `lib/activity_history.dart` with a search field, money-in/money-out filtering, empty-state handling and detail navigation.
+- History remains backed by **sample data** and is never a substitute for an authenticated transaction ledger or verified receipt.
+- Bill-service grids adapt their child height for text scaling, reducing overflow risk on small screens.
+- `test/activity_history_test.dart` covers filtering, empty results, clearing search and opening details.
+- GitHub Actions now supports manual dispatch, analyzer/test/web release build and a downloadable web preview artifact if it passes.
+- The CI pipeline's completion and pass/fail status have **not** been independently verified; review Actions before deploying.
+
+### Pre-launch QA checklist
+
+1. Confirm GitHub Actions build and widget tests are passing.
+2. Inspect interactive screens at 320, 375, 430, 768, 1024 and 1440 logical-pixel widths.
+3. Test increased text size, reduced motion, screen reader labels and physical keyboard operation.
+4. Confirm no input in demo mode is sent to external networks.
+5. Add signed builds, CSP/security headers, secure API routing and full authentication before going live.
