@@ -62,7 +62,7 @@ class BackchannelCodeExchanger:
             body = response.json()
         except ValueError as exc:
             raise LoginUnavailable("Invalid identity provider response") from exc
-        if not isinstance(body, dict) or body.get("token_type", "").lower() != "bearer":
+        if (not isinstance(body, dict) or\n                not isinstance(body.get("token_type"), str) or\n                body["token_type"].lower() != "bearer"):
             raise LoginUnavailable("Invalid identity provider response")
         access, id_token = body.get("access_token"), body.get("id_token")
         if (not isinstance(access, str) or not isinstance(id_token, str)
