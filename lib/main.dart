@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_history.dart';
+import 'input_validators.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -64,9 +65,15 @@ class _ShellState extends State<Shell> {
 }
 class CardBox extends StatelessWidget{
  final Widget child;const CardBox({super.key,required this.child});
- @override Widget build(BuildContext context)=>Container(width:double.infinity,padding:const EdgeInsets.all(19),
- decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(23),
- border:Border.all(color:const Color(0xFFE4ECEA))),child:child);
+ @override Widget build(BuildContext context)=>Material(
+   color:Colors.white,
+   clipBehavior:Clip.antiAlias,
+   shape:RoundedRectangleBorder(
+     borderRadius:BorderRadius.circular(23),
+     side:const BorderSide(color:Color(0xFFE4ECEA)),
+   ),
+   child:Padding(padding:const EdgeInsets.all(19),child:child),
+ );
 }
 class Content extends StatelessWidget{
  final String title,subtitle;final List<Widget> children;
@@ -134,7 +141,7 @@ class Loans extends StatelessWidget{
  const SizedBox(height:16),ActionButton('Start application',()=>open(const ApplyLoan()))])),
  const CardBox(child:ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.check_circle,color:mint),
  title:Text('Previous personal loan'),subtitle:Text('Settled • 2025'),trailing:Text('M 3,000'))),
- ]);}
+  ]);
 }
 class LoanDetails extends StatelessWidget{
  const LoanDetails({super.key});
@@ -148,7 +155,7 @@ class LoanDetails extends StatelessWidget{
  const SizedBox(height:18),const Text('Upcoming instalments',style:TextStyle(fontWeight:FontWeight.bold)),
  const Detail('15 Nov 2026','M 650.00'),const Detail('15 Dec 2026','M 650.00'),
  const Detail('15 Jan 2027','M 650.00'),
- ]))));
+  ])));
 }
 class ApplyLoan extends StatefulWidget{const ApplyLoan({super.key});@override State<ApplyLoan> createState()=>_ApplyLoanState();}
 class _ApplyLoanState extends State<ApplyLoan>{
@@ -192,7 +199,7 @@ class _ApplyLoanState extends State<ApplyLoan>{
  }
  if(step<2){setState(()=>step++);}else{demo(context,'Loan application');}
  }),
- ]))));
+  ])));
 }
 class Wallet extends StatelessWidget{
  final ValueChanged<Widget> open;const Wallet({super.key,required this.open});
@@ -209,7 +216,7 @@ class Wallet extends StatelessWidget{
  const Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward),
  const Divider(),const Transaction('LEC prepaid','28 Oct 2026','− M 200.00',Icons.bolt),
  TextButton(onPressed:()=>open(const History()),child:const Text('View all activity'))])),
- ]);}
+  ]);
 }
 class Transfer extends StatefulWidget{final String action;const Transfer({super.key,required this.action});@override State<Transfer> createState()=>_TransferState();}
 class _TransferState extends State<Transfer>{
@@ -225,15 +232,15 @@ class _TransferState extends State<Transfer>{
  onChanged:(v)=>setState(()=>method=v??method)),
  if(widget.action!='Repay loan')...[const SizedBox(height:12),
  TextFormField(controller:referenceController,decoration:const InputDecoration(labelText:'Recipient / account number'),
- validator:(v)=>(v??'').trim().isEmpty?'Required':null)],
+ validator:DemoInputValidator.reference)],
  const SizedBox(height:12),
  TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
- validator:(v)=>(double.tryParse(v??'')??0)<=0?'Enter a positive amount':null),
+ validator:DemoInputValidator.amount),
  const SizedBox(height:15),
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
  const SizedBox(height:20),
  ActionButton('Review transaction',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.action,amount:amountController.text.trim(),reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));}),
- ])))));
+  ]))));
 }
 const serviceList=<({String name,IconData icon})>[
  (name:'Electricity',icon:Icons.bolt),(name:'WASCO water',icon:Icons.water_drop),
@@ -263,7 +270,7 @@ class Bills extends StatelessWidget{
  Services(onTap:(s){if(s=='Transfers'){open(const Transfer(action:'Send money'));}else if(s=='More'){demo(context,'More billers');}else{open(PayService(service:s));}}),
  ])),
  const CardBox(child:Text('External providers and bill lookup APIs are not yet connected. All payment flows are demos.')),
- ]);}
+  ]);
 }
 class PayService extends StatefulWidget{final String service;const PayService({super.key,required this.service});@override State<PayService> createState()=>_PayServiceState();}
 class _PayServiceState extends State<PayService>{
@@ -277,15 +284,15 @@ class _PayServiceState extends State<PayService>{
  TextFormField(controller:referenceController,decoration:InputDecoration(labelText:switch(widget.service){
  'Electricity'=>'Meter number','WASCO water'=>'Water account number','School fees'=>'Student reference',
  'TV subscriptions'=>'Subscriber number',_=>'Mobile phone number'}),
- validator:(v)=>(v??'').trim().isEmpty?'Required':null),
+ validator:DemoInputValidator.reference),
  const SizedBox(height:12),
  TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
- validator:(v)=>(double.tryParse(v??'')??0)<=0?'Enter a positive amount':null),
+ validator:DemoInputValidator.amount),
  const SizedBox(height:16),
  const Text('Biller validation, settlement and receipts require an approved provider integration.'),
  const SizedBox(height:18),
  ActionButton('Review payment',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.service,amount:amountController.text.trim(),reference:referenceController.text.trim(),method:'Wallet (demo)')));}),
- ])))));
+  ]))));
 }
 class Profile extends StatelessWidget{
  final ValueChanged<Widget> open;final VoidCallback exit;
@@ -308,7 +315,7 @@ class Profile extends StatelessWidget{
  title:const Text('Transaction history'),trailing:const Icon(Icons.chevron_right),onTap:()=>open(const History())),
  ])),
  OutlinedButton.icon(onPressed:exit,icon:const Icon(Icons.logout),label:const Text('Exit demo')),
- ]);}
+  ]);
 }
 class Subpage extends StatelessWidget{
  final String title;final Widget child;const Subpage({super.key,required this.title,required this.child});
