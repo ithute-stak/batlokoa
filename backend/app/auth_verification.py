@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import jwt
+from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 
 from .identity import VerifiedClaims
 
@@ -43,9 +44,9 @@ class CentralAuthVerifier:
             raise jwt.InvalidTokenError("Invalid access token")
         try:
             selected = self.keys.get_signing_key_from_jwt(token)
-        except jwt.PyJWKClientConnectionError as exc:
+        except PyJWKClientConnectionError as exc:
             raise CentralAuthUnavailable("Central Auth key source unavailable") from exc
-        except jwt.PyJWKClientError as exc:
+        except PyJWKClientError as exc:
             raise jwt.InvalidTokenError("Invalid signing key") from exc
         key = getattr(selected, "key", None)
         if key is None:
