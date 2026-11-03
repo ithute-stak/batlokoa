@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_history.dart';
+import 'input_validators.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -225,10 +226,10 @@ class _TransferState extends State<Transfer>{
  onChanged:(v)=>setState(()=>method=v??method)),
  if(widget.action!='Repay loan')...[const SizedBox(height:12),
  TextFormField(controller:referenceController,decoration:const InputDecoration(labelText:'Recipient / account number'),
- validator:(v)=>(v??'').trim().isEmpty?'Required':null)],
+ validator:DemoInputValidator.reference)],
  const SizedBox(height:12),
  TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
- validator:(v)=>(double.tryParse(v??'')??0)<=0?'Enter a positive amount':null),
+ validator:DemoInputValidator.amount),
  const SizedBox(height:15),
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
  const SizedBox(height:20),
@@ -277,10 +278,10 @@ class _PayServiceState extends State<PayService>{
  TextFormField(controller:referenceController,decoration:InputDecoration(labelText:switch(widget.service){
  'Electricity'=>'Meter number','WASCO water'=>'Water account number','School fees'=>'Student reference',
  'TV subscriptions'=>'Subscriber number',_=>'Mobile phone number'}),
- validator:(v)=>(v??'').trim().isEmpty?'Required':null),
+ validator:DemoInputValidator.reference),
  const SizedBox(height:12),
  TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
- validator:(v)=>(double.tryParse(v??'')??0)<=0?'Enter a positive amount':null),
+ validator:DemoInputValidator.amount),
  const SizedBox(height:16),
  const Text('Biller validation, settlement and receipts require an approved provider integration.'),
  const SizedBox(height:18),
