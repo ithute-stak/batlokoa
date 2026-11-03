@@ -21,6 +21,6 @@ void main() {
   test('reference rejects empty or excessive input', () {
     expect(DemoInputValidator.reference(' '), isNotNull);
     expect(DemoInputValidator.reference('abc123'), isNull);
-    expect(DemoInputValidator.reference('x' * 121), isNotNull);
+    expect(DemoInputValidator.reference(List.filled(121, 'x').join()), isNotNull);
   });
 }
