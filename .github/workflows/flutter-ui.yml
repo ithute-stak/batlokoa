@@ -31,6 +31,39 @@ jobs:
       - name: Test fail-closed gateway
         run: python -m pytest -q backend/tests
 
+  postgres-link-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: batlokoa_test
+          POSTGRES_PASSWORD: batlokoa_disposable_ci
+          POSTGRES_DB: batlokoa_link_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U batlokoa_test -d batlokoa_link_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BATLOKOA_LINK_TEST_POSTGRES_URL: postgresql://batlokoa_test:batlokoa_disposable_ci@127.0.0.1:5432/batlokoa_link_ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install test dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+      - name: Test PostgreSQL link mappings, transactions and revocation
+        run: python -m pytest -q backend/tests/test_link_store_postgres.py
+
   analyze-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
