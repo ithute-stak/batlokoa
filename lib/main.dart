@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'batlokoa_design.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_history.dart';
@@ -7,15 +8,14 @@ import 'customer_loans_screen.dart';
 import 'customer_session_screen.dart';
 
 void main() => runApp(const BatlokoaApp());
-const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
+// Legacy aliases preserve the existing demo presentation while shared tokens
+// provide one upgrade point for approved branding.
+const teal=BatlokoaDesign.primary, mint=BatlokoaDesign.accent, bg=BatlokoaDesign.canvas;
 class BatlokoaApp extends StatelessWidget {
   const BatlokoaApp({super.key});
   @override Widget build(BuildContext context)=>MaterialApp(
     debugShowCheckedModeBanner:false,title:'Batlokoa Finance',
-    theme:ThemeData(useMaterial3:true,scaffoldBackgroundColor:bg,
-      colorScheme:ColorScheme.fromSeed(seedColor:teal,primary:teal),
-      inputDecorationTheme:InputDecorationTheme(filled:true,fillColor:Colors.white,
-        border:OutlineInputBorder(borderRadius:BorderRadius.circular(16)))),
+    theme:BatlokoaDesign.theme(),
     home:const Entry());
 }
 class Entry extends StatefulWidget {const Entry({super.key});@override State<Entry> createState()=>_EntryState();}
@@ -81,10 +81,10 @@ class CardBox extends StatelessWidget{
    color:Colors.white,
    clipBehavior:Clip.antiAlias,
    shape:RoundedRectangleBorder(
-     borderRadius:BorderRadius.circular(23),
-     side:const BorderSide(color:Color(0xFFE4ECEA)),
+     borderRadius:BorderRadius.circular(BatlokoaDesign.cardRadius),
+     side:const BorderSide(color:BatlokoaDesign.border),
    ),
-   child:Padding(padding:const EdgeInsets.all(19),child:child),
+   child:Padding(padding:const EdgeInsets.all(20),child:child),
  );
 }
 /// Always-visible disclosure on every main demo tab.
@@ -116,8 +116,8 @@ class DemoNotice extends StatelessWidget {
 class Content extends StatelessWidget{
  final String title,subtitle;final List<Widget> children;
  const Content({super.key,required this.title,this.subtitle='',required this.children});
- @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.all(20),children:[
- Text(title,style:const TextStyle(fontSize:28,color:teal,fontWeight:FontWeight.w800)),
+ @override Widget build(BuildContext context)=>ListView(padding:BatlokoaDesign.pagePadding(MediaQuery.sizeOf(context).width),children:[
+ Text(title,style:Theme.of(context).textTheme.headlineMedium),
  if(subtitle.isNotEmpty)...[const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.black54))],
  const SizedBox(height:16),
  const DemoNotice(),
@@ -128,7 +128,7 @@ class Content extends StatelessWidget{
 class ActionButton extends StatelessWidget{
  final String title;final VoidCallback onTap;const ActionButton(this.title,this.onTap,{super.key});
  @override Widget build(BuildContext context)=>SizedBox(width:double.infinity,height:50,
- child:FilledButton(onPressed:onTap,child:Text(title)));
+ child:FilledButton(onPressed:onTap,child:Text(title,textAlign:TextAlign.center)));
 }
 void demo(BuildContext context,String label)=>showDialog<void>(context:context,builder:(ctx)=>AlertDialog(
  title:const Text('Demo preview'),content:Text(label+' is not connected to a financial service. No money moved or application submitted.'),
@@ -304,13 +304,13 @@ class Services extends StatelessWidget{
  const Services({super.key,required this.onTap,this.compact=false});
  @override Widget build(BuildContext context)=>LayoutBuilder(builder:(context,c)=>GridView.count(
  crossAxisCount:c.maxWidth<220?1:c.maxWidth>500?4:2,crossAxisSpacing:9,mainAxisSpacing:9,
- mainAxisExtent:(compact?100.0:112.0)*MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0,1.5).toDouble(),
+ mainAxisExtent:(compact?106.0:122.0)*MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0,2.0).toDouble(),
  shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),
  children:[for(final s in serviceList)InkWell(onTap:()=>onTap(s.name),borderRadius:BorderRadius.circular(14),
- child:Container(decoration:BoxDecoration(color:bg,borderRadius:BorderRadius.circular(14)),
+ child:Container(padding:const EdgeInsets.symmetric(horizontal:6),decoration:BoxDecoration(color:bg,borderRadius:BorderRadius.circular(14)),
  child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
  Icon(s.icon,color:teal,size:compact?23:29),const SizedBox(height:6),
- Text(s.name,textAlign:TextAlign.center,maxLines:2,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600)),
+ Text(s.name,textAlign:TextAlign.center,maxLines:3,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600)),
  ])))]));
 }
 class Bills extends StatelessWidget{
