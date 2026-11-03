@@ -152,7 +152,8 @@ class LoanDetails extends StatelessWidget{
 class ApplyLoan extends StatefulWidget{const ApplyLoan({super.key});@override State<ApplyLoan> createState()=>_ApplyLoanState();}
 class _ApplyLoanState extends State<ApplyLoan>{
  int step=0,months=6;double amount=5000;String purpose='Personal';final income=TextEditingController();
- @override void dispose(){income.dispose();super.dispose();}
+ final incomeSource=TextEditingController();
+ @override void dispose(){income.dispose();incomeSource.dispose();super.dispose();}
  @override Widget build(BuildContext context)=>Subpage(title:'Apply for a loan',child:CardBox(child:Column(
  crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text('Step '+(step+1).toString()+' of 3'),const SizedBox(height:8),
@@ -170,19 +171,24 @@ class _ApplyLoanState extends State<ApplyLoan>{
  onChanged:(v)=>setState(()=>purpose=v??purpose)),
  ]else if(step==1)...[
  const Text('Affordability details',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
- const SizedBox(height:14),const TextField(decoration:InputDecoration(labelText:'Employment / income source')),
+ const SizedBox(height:14),TextField(controller:incomeSource,decoration:const InputDecoration(labelText:'Employment / income source')),
  const SizedBox(height:12),TextField(controller:income,keyboardType:TextInputType.number,
  decoration:const InputDecoration(labelText:'Monthly income in LSL')),
  ]else...[
  const Text('Review your request',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
  const SizedBox(height:16),Detail('Amount','M '+amount.toStringAsFixed(2)),
  Detail('Term',months.toString()+' months'),Detail('Purpose',purpose),
+ Detail('Income source',incomeSource.text.trim()),Detail('Monthly income','M '+income.text.trim()),
  const SizedBox(height:12),
  const Text('Not a loan offer. LoanHub must supply interest, fees, repayment schedule and mandatory disclosures before acceptance.'),
  ],
  const SizedBox(height:24),
  if(step>0)TextButton(onPressed:()=>setState(()=>step--),child:const Text('Back')),
  ActionButton(step==2?'Preview application':'Continue',(){
+ if(step==1 && (incomeSource.text.trim().isEmpty || (double.tryParse(income.text.trim())??0)<=0)){
+ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter your income source and a valid monthly income.')));
+ return;
+ }
  if(step<2){setState(()=>step++);}else{demo(context,'Loan application');}
  }),
  ]))));
