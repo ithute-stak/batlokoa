@@ -18,7 +18,7 @@ void main() {
 
   test('Income source requires a reasonable nonempty label', () {
     expect(DemoInputValidator.incomeSource('  '), isNotNull);
-    expect(DemoInputValidator.incomeSource('x' * 121), isNotNull);
+    expect(DemoInputValidator.incomeSource(List.filled(121, 'x').join()), isNotNull);
     expect(DemoInputValidator.incomeSource('Sample employment'), isNull);
   });
 
