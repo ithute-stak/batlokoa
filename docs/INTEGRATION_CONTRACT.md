@@ -226,3 +226,18 @@ URLs, browser logs or analytics.
 Customer branding must continue to inherit the official Batlokoa logo and
 approved palette when the assets are available; this phase does not change UI
 artwork. IthutePay payments remain disabled.
+
+## Phase 11: persistent OIDC login transaction and backchannel exchange
+
+The Phase 10 OIDC protocol now has two independent, opt-in implementations.
+
+- `backend/migrations/003_oidc_login_transactions.sql` and `backend/app/oidc_transaction_store.py` store short-lived login transactions in PostgreSQL. They hash the browser login state, encrypt the nonce and PKCE code verifier with a separate Fernet secret supplied by trusted bootstrap, expire rows after at most five minutes and use atomic `DELETE ... RETURNING` to allow only one callback to consume each state. Failed callbacks never restore consumed state. The Fernet key must be managed separately from the database, rotated with an explicit migration/recovery plan and never committed in source.
+- `backend/app/oidc_token_exchange.py` provides a strict server-side code exchanger using a configured HTTPS token endpoint, fixed client ID and registered callback URI, exact OAuth `authorization_code` form parameters and S256 PKCE verifier. It refuses redirects, oversized, non-JSON, non-200, missing-ID-token and malformed provider responses. Tokens remain server-only and must pass the Phase 9/10 signed access-token and ID-token nonce verification before a short-lived customer session can be issued.
+
+CI now runs the OIDC login transaction tests against disposable PostgreSQL, including encryption-at-rest assertions, expiry and twelve concurrent callback attempts where exactly one wins. Mock HTTP tests exercise success and failure conditions without contacting a real identity provider.
+
+**Production activation remains blocked.** The exact !thute Auth discovery endpoints and Batlokoa client registration, permitted redirect URI, required scopes and token-exchange requirements have not been confirmed from authoritative provider configuration. No OAuth credentials or runtime database pools are provisioned. The user-facing Flutter login is demo-only, public routes remain disabled by default, and LoanHub read access and IthutePay financial transactions are still disabled.
+
+Before live staging, confirm official OIDC discovery metadata, approved Batlokoa audience and client registration, secure token endpoint authentication requirements, a managed Fernet key, database migrations and least-privilege grants, JWKS rotation, OAuth callback CSRF/origin safeguards, and account-link proof controls. Do not enable financial operations simply because login works.
+
+Customer UI branding must continue to use official Batlokoa Financial Services artwork and its verified colour palette when available; this backend stage does not modify the interface.
