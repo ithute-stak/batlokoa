@@ -1,0 +1,16 @@
+# UI preview only. Publish behind an existing HTTPS reverse proxy.
+services:
+  batlokoa-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:8080"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
