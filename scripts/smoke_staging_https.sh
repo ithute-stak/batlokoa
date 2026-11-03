@@ -16,6 +16,20 @@ for attempt in $(seq 1 40); do
   fi
   sleep 1
 done
+# Web Nginx can become healthy before the API gateway has started.
+# Require the API to answer through the HTTPS edge rather than accepting 502.
+for attempt in $(seq 1 40); do
+  if curl --insecure --silent --fail --max-time 2 "${ORIGIN}/api/v1/capabilities" | grep -q '"integration_disabled"'; then
+    break
+  fi
+  if [ "$attempt" -eq 40 ]; then
+    echo "HTTPS gateway failed readiness check" >&2
+    docker compose -f compose.staging.https.yml ps >&2 || true
+    docker compose -f compose.staging.https.yml logs --tail=80 batlokoa-edge batlokoa-gateway-preview >&2 || true
+    exit 1
+  fi
+  sleep 1
+done
 headers="$(curl --insecure --silent --show-error --dump-header - --output /dev/null "${ORIGIN}/")"
 grep -qi '^x-content-type-options: nosniff' <<< "$headers"
 grep -qi '^x-frame-options: DENY' <<< "$headers"

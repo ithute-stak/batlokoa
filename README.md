@@ -166,3 +166,9 @@ The five demo tabs now use `IndexedStack` to keep their widget trees alive while
 Demo loan applications, wallet transfers and bill-payment forms use `DemoDraftGuard`: a back gesture or navigation attempt on a changed form asks the user to **Keep editing** or **Discard draft**. Blank forms exit normally, while the confirmation dialog explicitly states that no payment or application has been submitted. Drafts are in-memory only, and returning from a read-only payment review does not clear the form. Flutter tests exercise tab state retention, editing/discarding and normal blank-form navigation at narrow mobile sizes.
 
 **No live loan applications, balances, real authentication or IthutePay payments were enabled.** The current colours remain provisional pending official Batlokoa brand artwork and codes.
+
+## Phase 23 — accessible demo form error recovery
+
+The loan affordability step now shows a persistent, visible inline error summary instead of a temporary snackbar when required demo income details are missing or invalid. The error clears when the user resumes editing, without resetting earlier loan choices. The shared `DemoFormError` component marks the error as a screen-reader live region. Transfer and biller payment previews now validate fields as users interact with them, so an invalid amount can be corrected before reviewing a non-transactional confirmation.
+
+Flutter widget tests cover loan error recovery, payment amount correction and accessibility semantics. This is **frontend-only** preview logic; production financial values, compliance checks and account permissions must still be validated by their authorized services. No real LoanHub loan application, login or IthutePay payment is enabled.
