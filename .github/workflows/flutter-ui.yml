@@ -117,6 +117,22 @@ jobs:
           docker compose -f compose.staging.yml up -d --build
           bash scripts/smoke_staging.sh
 
+      - name: Verify HTTPS same-origin staging routing
+        run: |
+          set -euo pipefail
+          TEST_CERT_DIR="$(mktemp -d)"
+          export BATLOKOA_STAGING_TLS_DIR="$TEST_CERT_DIR"
+          trap 'docker compose -f compose.staging.https.yml down --remove-orphans --volumes; rm -rf "$TEST_CERT_DIR"' EXIT
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj "/CN=localhost" -keyout "$TEST_CERT_DIR/privkey.pem" \
+            -out "$TEST_CERT_DIR/fullchain.pem" >/dev/null 2>&1
+          # CI-only disposable key: the restricted edge cannot traverse mktemp 0700 directories.
+          chmod 755 "$TEST_CERT_DIR"
+          chmod 644 "$TEST_CERT_DIR/fullchain.pem" "$TEST_CERT_DIR/privkey.pem"
+          docker compose -f compose.staging.https.yml config --quiet
+          docker compose -f compose.staging.https.yml up -d --build
+          bash scripts/smoke_staging_https.sh
+
       - name: Upload web preview artifact
         uses: actions/upload-artifact@v4
         with:
