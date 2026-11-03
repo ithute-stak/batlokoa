@@ -108,3 +108,29 @@ When a properly configured test bootstrap is injected, the gateway validates a b
 **Do not install the test configuration on a public deployment.** Before production access, confirm a reliable OIDC key-discovery/rotation process, real borrower account linking, secure token exchange or consented borrower sessions, server-held session cookie and CSRF controls, replay prevention, audit logging, threat modelling and the exact LoanHub staging access permissions. A token for a LoanHub staff or administrator must never be used for customer loan retrieval.
 
 IthutePay and all finance mutations remain disabled independently.
+
+## Phase 7: two-party verified LoanHub borrower linking (contract only)
+
+Inspected LoanHub's existing `apps/backend/routers/ithute_auth.py`: its `POST /api/v1/auth/ithute/link` requires an authenticated **local LoanHub user session** and a separately validated central !thute Auth token, checks that no different LoanHub user already owns that central subject, and records account-link audit evidence. LoanHub also exposes `GET /api/v1/borrowers/me` under a borrower-role session. These facts are useful for a future Batlokoa customer onboarding flow, but neither endpoint by itself proves Batlokoa tenant membership.
+
+The Batlokoa `backend/app/account_linking.py` module now describes an internal **two-proof account-linking transaction**:
+
+1. Start with a centrally signed subject already validated by the Batlokoa gateway (the module does not accept raw user-supplied JWT claims).
+2. Require an independently authenticated LoanHub `BORROWER` account proof for the **same central subject**. Verify the actual LoanHub user-to-borrower profile binding server-side; never infer it from a phone, email, ID number or user-entered UUID.
+3. Require explicit recent customer consent referencing the exact borrower and Batlokoa tenant.
+4. Recheck active Batlokoa tenant membership using an independent server-side verifier.
+5. Persist a mapping with transactional unique constraints for both the central subject and the `(tenant_id, borrower_id)` pair, and reject proof replay and ambiguous relinking.
+6. Retain immutable consent evidence and auditable link/revoke records in the eventual production store; require fresh dual proof for any relink.
+
+Unit tests exercise valid matching proofs, cross-tenant denial, role mismatch, subject mismatch, expired evidence, consent mismatch, duplicate links and replay.
+
+**Default behaviour remains disabled:** No customer-linked account table, no production persistence, no trusted LoanHub proof broker, no actual OIDC login flow, no public linking route, and no live customer loan retrieval are installed by this phase. `DisabledLinkStore` rejects every link request. All financial endpoints retain their existing fail-closed posture and IthutePay remains disabled.
+
+### Remaining production prerequisites
+
+- Verify the central Auth application registration, OIDC keys, issuer/audience and secure product session handling.
+- Create a production PostgreSQL mapping table with the required unique indexes, audit metadata, consent records and proof-replay constraints, plus integration tests against the real database.
+- Implement a reliable server-side LoanHub borrower-role proof against actual linked account state and server-authoritative company membership.
+- Ensure token/session issuance does not reuse admin/staff credentials as a customer borrower session.
+- Review account recovery, unlinking, revocation, stale/locked accounts, simultaneous linking and support escalation.
+- Keep all Batlokoa UI branding sourced from official company logo and verified brand colours rather than temporary placeholders.
