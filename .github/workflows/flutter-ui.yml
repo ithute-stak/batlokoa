@@ -56,6 +56,9 @@ jobs:
       - name: Validate Nginx configuration
         run: docker run --rm batlokoa-web:ci nginx -t
 
+      - name: Smoke-test running web container
+        run: bash scripts/smoke_web.sh
+
       - name: Upload web preview artifact
         uses: actions/upload-artifact@v4
         with:
