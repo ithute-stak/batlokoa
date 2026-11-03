@@ -36,4 +36,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(NavigationRail), findsOneWidget);
   });
+  testWidgets('narrow and wide dashboard layouts render without exceptions', (tester) async {
+    for (final width in <double>[320, 375, 430, 768, 1024, 1440]) {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(const BatlokoaApp());
+      await tester.tap(find.text('Explore demo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Good morning 👋'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'Viewport width: $width');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
 }
