@@ -113,3 +113,24 @@ docker compose -f compose.staging.yml down --remove-orphans --volumes
 The staging smoke script verifies the Flutter site and API health, confirms `/api/v1/capabilities` reports every financial feature disabled, and checks that all sensitive auth, loan, wallet and payment endpoints still return HTTP 503. The same stack test is part of GitHub Actions and fails if anything unexpectedly becomes available.
 
 **Operational limitations:** The gateway preview does not share the Flutter Nginx origin, and the web UI remains demo-only. A public production deployment requires externally managed HTTPS, registered OIDC callback, real provider discovery/JWKS, reviewed database migrations and credentials, end-to-end authenticated browser tests, tenant-link and borrower-role authorization, logging/monitoring and release rollback instructions. Never expose the preview API ports directly to the internet or enable transactions as part of this preview.
+
+## Phase 16: same-origin HTTPS staging and session-status boundary
+
+The opt-in `compose.staging.https.yml` adds an Nginx HTTPS edge on loopback port 18443. It serves Flutter Web from the web container and sends `/api/` to the FastAPI gateway under **the same HTTPS origin**. Neither backend container publishes a host port. The edge requires separately provisioned TLS certificate files: `fullchain.pem` and `privkey.pem`. No certificates, live signing keys, customer details or credentials are committed.
+
+A controlled staging operator can build Flutter assets and start the preview with:
+
+```sh
+flutter pub get
+flutter build web --release
+export BATLOKOA_STAGING_TLS_DIR=/absolute/path/to/approved-staging-certificates
+docker compose -f compose.staging.https.yml config --quiet
+docker compose -f compose.staging.https.yml up -d --build
+docker compose -f compose.staging.https.yml down --remove-orphans --volumes
+```
+
+By default only `https://127.0.0.1:18443` is published. A publicly reachable staging domain requires a reviewed front-facing TLS/reverse proxy plan, valid trusted certificate, approved DNS and network/firewall controls; the loopback stack is **not** a public deployment. CI generates a **disposable self-signed certificate only for local acceptance tests** and verifies the same-origin gateway routes remain 503 for login, verified loans, wallet and financial writes. Do not use `curl --insecure` in real customer clients.
+
+Flutter now includes a separate read-only **Secure sign-in status** view and a `GatewaySessionRepository` contract that calls `GET /api/v1/auth/session` only on an operator-provided HTTPS origin, rejects malformed/disabled responses, and never sends bearer credentials or tenant IDs. By default the view uses `DisabledSessionRepository`: it performs no network operation and reports that secure sign-in is not connected. No automatic login, token storage or live loan retrieval was enabled.
+
+Outstanding external prerequisites: verified !thute Auth client registration, provider metadata, trusted HTTPS host/certificate, approved customer-session bootstrap and database configuration, loan-borrower authorization, official Batlokoa Financial Services logo and approved palette. IthutePay remains disabled.
