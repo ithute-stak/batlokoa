@@ -1,0 +1,37 @@
+# Deliberately disabled staging preview. No live IdP, LoanHub, payment or DB
+# credentials. Both ports bind to loopback; front-facing TLS is a separate task.
+# The API is intentionally NOT proxied through the static Flutter Nginx.
+services:
+  batlokoa-web-preview:
+    image: batlokoa-web:staging
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "127.0.0.1:${BATLOKOA_STAGING_WEB_PORT:-18088}:8080"
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+
+  batlokoa-gateway-preview:
+    image: batlokoa-gateway:staging
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    ports:
+      - "127.0.0.1:${BATLOKOA_STAGING_API_PORT:-18089}:8000"
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    environment:
+      PYTHONUNBUFFERED: "1"
