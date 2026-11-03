@@ -11,7 +11,14 @@ class ActivityHistoryPage extends StatefulWidget {
 }
 
 class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
+  final searchController = TextEditingController();
   String query = '';
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
   String filter = 'All';
   static const filters = ['All', 'Money in', 'Money out'];
 
@@ -47,6 +54,7 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
                 const SizedBox(height: 16),
                 TextField(
                   key: const Key('activity-search'),
+                  controller: searchController,
                   textInputAction: TextInputAction.search,
                   decoration: const InputDecoration(
                     labelText: 'Search activity',
@@ -92,6 +100,7 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
                           TextButton(
                             onPressed: () => setState(() {
                               query = '';
+                              searchController.clear();
                               filter = 'All';
                             }),
                             child: const Text('Show all activity'),
