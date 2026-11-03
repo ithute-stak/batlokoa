@@ -64,6 +64,7 @@ class PostgresSessionStore:
         self._pool = pool
         self._sessions = f'"{schema}".customer_sessions'
         self._links = f'"{schema}".customer_account_links'
+        self._revocations = f'"{schema}".customer_central_session_revocations'
 
     async def issue(
         self, *, claims: CentralAccessClaims, tenant_id: UUID,
@@ -94,6 +95,15 @@ class PostgresSessionStore:
         raw_csrf = secrets.token_urlsafe(32)
         async with self._pool.acquire() as connection:
             async with connection.transaction():
+                await connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    str(central_sid),
+                )
+                if await connection.fetchval(
+                    f"SELECT 1 FROM {self._revocations} WHERE central_sid=$1",
+                    central_sid,
+                ):
+                    raise SessionDenied("Central identity session has been revoked")
                 link_id = await connection.fetchval(
                     f"""SELECT id FROM {self._links}
                         WHERE issuer=$1 AND subject=$2 AND tenant_id=$3
@@ -162,11 +172,21 @@ class PostgresSessionStore:
         return row is not None
 
     async def revoke_central_session(self, sid: UUID) -> int:
-        """Revocation webhook handler must authenticate upstream before calling."""
+        """Only call after an authenticated central Auth revocation event."""
         async with self._pool.acquire() as connection:
-            result = await connection.execute(
-                f"""UPDATE {self._sessions} SET revoked_at=now()
-                WHERE central_sid=$1 AND revoked_at IS NULL""",
-                sid,
-            )
+            async with connection.transaction():
+                await connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    str(sid),
+                )
+                await connection.execute(
+                    f"""INSERT INTO {self._revocations}(central_sid)
+                    VALUES ($1) ON CONFLICT (central_sid) DO NOTHING""",
+                    sid,
+                )
+                result = await connection.execute(
+                    f"""UPDATE {self._sessions} SET revoked_at=now()
+                    WHERE central_sid=$1 AND revoked_at IS NULL""",
+                    sid,
+                )
         return int(result.split()[-1])
