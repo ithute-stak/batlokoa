@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'customer_flows.dart';
+import 'payment_review.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -206,6 +207,8 @@ class Wallet extends StatelessWidget{
 class Transfer extends StatefulWidget{final String action;const Transfer({super.key,required this.action});@override State<Transfer> createState()=>_TransferState();}
 class _TransferState extends State<Transfer>{
  String method='M-Pesa';final form=GlobalKey<FormState>();
+ final amountController=TextEditingController();final referenceController=TextEditingController();
+ @override void dispose(){amountController.dispose();referenceController.dispose();super.dispose();}
  @override Widget build(BuildContext context)=>Subpage(title:widget.action,child:CardBox(child:Form(
  key:form,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text(widget.action,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
@@ -214,15 +217,15 @@ class _TransferState extends State<Transfer>{
  items:['M-Pesa','Bank account','Wallet'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
  onChanged:(v)=>setState(()=>method=v??method)),
  if(widget.action!='Repay loan')...[const SizedBox(height:12),
- TextFormField(decoration:const InputDecoration(labelText:'Recipient / account number'),
+ TextFormField(controller:referenceController,decoration:const InputDecoration(labelText:'Recipient / account number'),
  validator:(v)=>(v??'').trim().isEmpty?'Required':null)],
  const SizedBox(height:12),
- TextFormField(keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:(v)=>(double.tryParse(v??'')??0)<=0?'Enter a positive amount':null),
  const SizedBox(height:15),
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
  const SizedBox(height:20),
- ActionButton('Review transaction',(){if(form.currentState!.validate())demo(context,widget.action);}),
+ ActionButton('Review transaction',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.action,amount:amountController.text.trim(),reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));}),
  ])))));
 }
 const serviceList=<({String name,IconData icon})>[
@@ -257,21 +260,23 @@ class Bills extends StatelessWidget{
 class PayService extends StatefulWidget{final String service;const PayService({super.key,required this.service});@override State<PayService> createState()=>_PayServiceState();}
 class _PayServiceState extends State<PayService>{
  final form=GlobalKey<FormState>();
+ final amountController=TextEditingController(),referenceController=TextEditingController();
+ @override void dispose(){amountController.dispose();referenceController.dispose();super.dispose();}
  @override Widget build(BuildContext context)=>Subpage(title:widget.service,child:CardBox(child:Form(key:form,
  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text('Pay '+widget.service,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
  const SizedBox(height:18),
- TextFormField(decoration:InputDecoration(labelText:switch(widget.service){
+ TextFormField(controller:referenceController,decoration:InputDecoration(labelText:switch(widget.service){
  'Electricity'=>'Meter number','WASCO water'=>'Water account number','School fees'=>'Student reference',
  'TV subscriptions'=>'Subscriber number',_=>'Mobile phone number'}),
  validator:(v)=>(v??'').trim().isEmpty?'Required':null),
  const SizedBox(height:12),
- TextFormField(keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:(v)=>(double.tryParse(v??'')??0)<=0?'Enter a positive amount':null),
  const SizedBox(height:16),
  const Text('Biller validation, settlement and receipts require an approved provider integration.'),
  const SizedBox(height:18),
- ActionButton('Review payment',(){if(form.currentState!.validate())demo(context,widget.service+' payment');}),
+ ActionButton('Review payment',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.service,amount:amountController.text.trim(),reference:referenceController.text.trim(),method:'Wallet (demo)')));}),
  ])))));
 }
 class Profile extends StatelessWidget{
