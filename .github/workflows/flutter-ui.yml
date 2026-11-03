@@ -50,6 +50,12 @@ jobs:
       - name: Build web UI
         run: flutter build web --release
 
+      - name: Package web preview container
+        run: docker build -f Dockerfile.web -t batlokoa-web:ci .
+
+      - name: Validate Nginx configuration
+        run: docker run --rm batlokoa-web:ci nginx -t
+
       - name: Upload web preview artifact
         uses: actions/upload-artifact@v4
         with:
