@@ -19,6 +19,7 @@ class BackchannelCodeExchanger:
     token_endpoint: str
     client_id: str
     expected_redirect_uri: str
+    transport: httpx.AsyncBaseTransport | None = None
 
     def __post_init__(self) -> None:
         parsed = urlsplit(self.token_endpoint)
@@ -39,7 +40,7 @@ class BackchannelCodeExchanger:
             raise LoginUnavailable("Invalid OAuth code exchange context")
         try:
             async with httpx.AsyncClient(trust_env=False, follow_redirects=False,
-                                         timeout=5.0) as client:
+                                         timeout=5.0, transport=self.transport) as client:
                 response = await client.post(
                     self.token_endpoint,
                     data={
