@@ -26,16 +26,17 @@ class _EntryState extends State<Entry>{
  child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:440),child:Column(
  crossAxisAlignment:CrossAxisAlignment.stretch,children:[
  const CircleAvatar(radius:42,backgroundColor:teal,child:Icon(Icons.account_balance_wallet,color:Colors.white,size:42)),
- const SizedBox(height:20),const Text('Batlokoa Finance',textAlign:TextAlign.center,style:TextStyle(fontSize:31,fontWeight:FontWeight.bold,color:teal)),
+ const SizedBox(height:20),Text('Batlokoa Finance',textAlign:TextAlign.center,style:Theme.of(context).textTheme.headlineMedium),
  const Text('Borrow smarter. Pay easier.',textAlign:TextAlign.center),
  const SizedBox(height:28),CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
  Text(login?'Welcome back':'Create an account',style:const TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
  const SizedBox(height:16),
- if(!login)...[const TextField(decoration:InputDecoration(labelText:'Full name')),const SizedBox(height:12)],
- const TextField(keyboardType:TextInputType.phone,decoration:InputDecoration(labelText:'Phone number',prefixIcon:Icon(Icons.phone_outlined))),
+ if(!login)...[const TextField(textInputAction:TextInputAction.next,decoration:InputDecoration(labelText:'Full name')),const SizedBox(height:12)],
+ const TextField(keyboardType:TextInputType.phone,textInputAction:TextInputAction.next,decoration:InputDecoration(labelText:'Phone number',prefixIcon:Icon(Icons.phone_outlined))),
  const SizedBox(height:12),
  TextField(
    obscureText:!passwordVisible,
+   textInputAction:TextInputAction.done,
    decoration:InputDecoration(labelText:'Password',
      prefixIcon:const Icon(Icons.lock_outline),
      suffixIcon:IconButton(
@@ -127,8 +128,10 @@ class Content extends StatelessWidget{
 }
 class ActionButton extends StatelessWidget{
  final String title;final VoidCallback onTap;const ActionButton(this.title,this.onTap,{super.key});
- @override Widget build(BuildContext context)=>SizedBox(width:double.infinity,height:50,
- child:FilledButton(onPressed:onTap,child:Text(title,textAlign:TextAlign.center)));
+ @override Widget build(BuildContext context)=>SizedBox(width:double.infinity,
+ child:FilledButton(onPressed:onTap,child:Padding(
+   padding:const EdgeInsets.symmetric(vertical:12),
+   child:Text(title,textAlign:TextAlign.center))));
 }
 void demo(BuildContext context,String label)=>showDialog<void>(context:context,builder:(ctx)=>AlertDialog(
  title:const Text('Demo preview'),content:Text(label+' is not connected to a financial service. No money moved or application submitted.'),
@@ -231,8 +234,8 @@ class _ApplyLoanState extends State<ApplyLoan>{
  onChanged:(v)=>setState(()=>purpose=v??purpose)),
  ]else if(step==1)...[
  const Text('Affordability details',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
- const SizedBox(height:14),TextField(controller:incomeSource,decoration:const InputDecoration(labelText:'Employment / income source')),
- const SizedBox(height:12),TextField(controller:income,keyboardType:TextInputType.number,
+ const SizedBox(height:14),TextField(controller:incomeSource,textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Employment / income source')),
+ const SizedBox(height:12),TextField(controller:income,keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,
  decoration:const InputDecoration(labelText:'Monthly income in LSL')),
  ]else...[
  const Text('Review your request',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
@@ -283,10 +286,10 @@ class _TransferState extends State<Transfer>{
  items:['M-Pesa','Bank account','Wallet'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
  onChanged:(v)=>setState(()=>method=v??method)),
  if(widget.action!='Repay loan')...[const SizedBox(height:12),
- TextFormField(controller:referenceController,decoration:const InputDecoration(labelText:'Recipient / account number'),
+ TextFormField(controller:referenceController,textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Recipient / account number'),
  validator:DemoInputValidator.reference)],
  const SizedBox(height:12),
- TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:DemoInputValidator.amount),
  const SizedBox(height:15),
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
@@ -333,7 +336,7 @@ class _PayServiceState extends State<PayService>{
  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text('Pay '+widget.service,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
  const SizedBox(height:18),
- TextFormField(controller:referenceController,decoration:InputDecoration(labelText:switch(widget.service){
+ TextFormField(controller:referenceController,textInputAction:TextInputAction.next,decoration:InputDecoration(labelText:switch(widget.service){
  'Electricity'=>'Meter number','WASCO water'=>'Water account number','School fees'=>'Student reference',
  'TV subscriptions'=>'Subscriber number',_=>'Mobile phone number'}),
  validator:DemoInputValidator.reference),
@@ -375,11 +378,26 @@ class Subpage extends StatelessWidget{
  body:SafeArea(child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:740),
  child:ListView(padding:const EdgeInsets.all(20),children:[child])))));
 }
+/// Key-value details stack at large text size or constrained card width.
 class Detail extends StatelessWidget{
  final String label,value;const Detail(this.label,this.value,{super.key});
- @override Widget build(BuildContext context)=>Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Row(children:[
- Expanded(child:Text(label,style:const TextStyle(color:Colors.black54))),
- Flexible(child:Text(value,textAlign:TextAlign.end,style:const TextStyle(fontWeight:FontWeight.bold)))]));
+ @override Widget build(BuildContext context)=>LayoutBuilder(
+   builder:(context,constraints){
+     final stacked=constraints.maxWidth<300 ||
+       MediaQuery.textScalerOf(context).scale(1.0)>1.35;
+     final labelWidget=Text(label,style:const TextStyle(color:Colors.black54));
+     final valueWidget=Text(value,
+       textAlign:stacked?TextAlign.start:TextAlign.end,
+       style:const TextStyle(fontWeight:FontWeight.bold));
+     return Padding(padding:const EdgeInsets.symmetric(vertical:8),
+       child:stacked?Column(crossAxisAlignment:CrossAxisAlignment.start,
+         children:[labelWidget,const SizedBox(height:4),valueWidget]):
+         Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+           Expanded(child:labelWidget),
+           const SizedBox(width:12),
+           Flexible(child:valueWidget),
+         ]));
+   });
 }
 class Transaction extends StatelessWidget{
  final String title,date,amount;final IconData icon;
