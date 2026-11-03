@@ -95,6 +95,8 @@ void main() {
     expect(find.text('Discard demo draft?'), findsOneWidget);
     await tester.tap(find.text('Discard draft'));
     await tester.pumpAndSettle();
-    expect(find.text('My loans'), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 1);
+    expect(find.text('Step 2 of 3'), findsNothing);
+    expect(find.text('Discard demo draft?'), findsNothing);
   });
 }
