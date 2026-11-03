@@ -4,6 +4,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt import InvalidTokenError
+from pydantic import ValidationError
 
 from backend.app.identity import (
     CustomerContext,
@@ -50,7 +51,7 @@ def test_valid_signed_token():
     ],
 )
 def test_invalid_claims_rejected(changes):
-    with pytest.raises((InvalidTokenError, ValueError)):
+    with pytest.raises((InvalidTokenError, ValidationError, ValueError)):
         validate_access_token(
             token(**changes), issuer=ISSUER, audience=AUDIENCE, public_key=public
         )
