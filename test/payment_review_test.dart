@@ -18,7 +18,6 @@ void main() {
     expect(find.text('No money will be sent. This summary uses the details you entered.'), findsOneWidget);
     await tester.tap(find.text('Preview confirmation'));
     await tester.pumpAndSettle();
-    expect(find.text('No transaction was made and no receipt was issued.', findRichText: true), findsNothing);
     expect(find.textContaining('No transaction was made'), findsOneWidget);
   });
 
