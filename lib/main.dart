@@ -20,7 +20,7 @@ class BatlokoaApp extends StatelessWidget {
 }
 class Entry extends StatefulWidget {const Entry({super.key});@override State<Entry> createState()=>_EntryState();}
 class _EntryState extends State<Entry>{
- bool entered=false,login=true;
+ bool entered=false,login=true,passwordVisible=false;
  @override Widget build(BuildContext context)=>entered?Shell(exit:()=>setState(()=>entered=false)):
  Scaffold(body:SafeArea(child:Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),
  child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:440),child:Column(
@@ -34,14 +34,23 @@ class _EntryState extends State<Entry>{
  if(!login)...[const TextField(decoration:InputDecoration(labelText:'Full name')),const SizedBox(height:12)],
  const TextField(keyboardType:TextInputType.phone,decoration:InputDecoration(labelText:'Phone number',prefixIcon:Icon(Icons.phone_outlined))),
  const SizedBox(height:12),
- const TextField(obscureText:true,decoration:InputDecoration(labelText:'Password',prefixIcon:Icon(Icons.lock_outline))),
+ TextField(
+   obscureText:!passwordVisible,
+   decoration:InputDecoration(labelText:'Password',
+     prefixIcon:const Icon(Icons.lock_outline),
+     suffixIcon:IconButton(
+       tooltip:passwordVisible?'Hide password':'Show password',
+       icon:Icon(passwordVisible?Icons.visibility_off_outlined:Icons.visibility_outlined),
+       onPressed:()=>setState(()=>passwordVisible=!passwordVisible),
+     )),
+ ),
  const SizedBox(height:18),
- FilledButton(onPressed:()=>setState(()=>entered=true),child:Text(login?'Sign in (demo)':'Register (demo)')),
+ FilledButton(onPressed:()=>setState(()=>entered=true),child:Text(login?'Preview sign in (demo)':'Preview registration (demo)')),
  TextButton(onPressed:()=>setState(()=>login=!login),child:Text(login?'Create an account':'Already have an account?')),
  TextButton(onPressed:()=>setState(()=>entered=true),child:const Text('Explore demo')),
  TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>const CustomerSessionScreen())),child:const Text('Secure sign-in status')),
  ])),const SizedBox(height:14),
- const Text('Demo interface only. No real authentication or money transfers.',textAlign:TextAlign.center,style:TextStyle(fontSize:12)),
+ const DemoNotice(message:'This is a design preview. Entered credentials are not submitted or verified. No real authentication or money transfers.'),
  ]))))));
 }
 class Shell extends StatefulWidget {final VoidCallback exit;const Shell({super.key,required this.exit});@override State<Shell> createState()=>_ShellState();}
@@ -78,12 +87,40 @@ class CardBox extends StatelessWidget{
    child:Padding(padding:const EdgeInsets.all(19),child:child),
  );
 }
+/// Always-visible disclosure on every main demo tab.
+class DemoNotice extends StatelessWidget {
+ final String message;
+ const DemoNotice({
+   super.key,
+   this.message='DEMO PREVIEW — Balances, history and account details are fictional. No real payments or loan applications are enabled.',
+ });
+ @override Widget build(BuildContext context)=>Semantics(
+   label:message,
+   child:Container(
+     width:double.infinity,
+     padding:const EdgeInsets.symmetric(horizontal:14,vertical:12),
+     decoration:BoxDecoration(
+       color:const Color(0xFFFFF5DF),
+       border:Border.all(color:const Color(0xFFE8D3A1)),
+       borderRadius:BorderRadius.circular(12),
+     ),
+     child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+       const Icon(Icons.info_outline,color:Color(0xFF664D03),size:20),
+       const SizedBox(width:10),
+       Expanded(child:Text(message,style:const TextStyle(
+         color:Color(0xFF664D03),fontSize:13,fontWeight:FontWeight.w600))),
+     ]),
+   ),
+ );
+}
 class Content extends StatelessWidget{
  final String title,subtitle;final List<Widget> children;
  const Content({super.key,required this.title,this.subtitle='',required this.children});
  @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.all(20),children:[
  Text(title,style:const TextStyle(fontSize:28,color:teal,fontWeight:FontWeight.w800)),
  if(subtitle.isNotEmpty)...[const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.black54))],
+ const SizedBox(height:16),
+ const DemoNotice(),
  const SizedBox(height:20),
  for(final child in children)...[child,const SizedBox(height:16)],
  ]);
@@ -102,7 +139,7 @@ class Home extends StatelessWidget{
  @override Widget build(BuildContext context)=>Content(title:'Good morning 👋',subtitle:'Welcome to Batlokoa Finance',children:[
  Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(color:teal,borderRadius:BorderRadius.circular(24)),
  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- const Text('Available wallet balance',style:TextStyle(color:Colors.white70)),
+ const Text('Sample wallet balance',style:TextStyle(color:Colors.white70)),
  const SizedBox(height:8),const Text('M 2,450.00',style:TextStyle(color:Colors.white,fontSize:34,fontWeight:FontWeight.bold)),
  const Text('Sample balance • LSL',style:TextStyle(color:Colors.white70,fontSize:12)),
  const SizedBox(height:15),Wrap(spacing:8,children:[
@@ -113,7 +150,7 @@ class Home extends StatelessWidget{
  Expanded(child:loanSummary(context)),const SizedBox(width:15),Expanded(child:quickPayments(context))]):
  Column(children:[loanSummary(context),const SizedBox(height:16),quickPayments(context)])),
  CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- const Text('Recent activity',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+ const Text('Sample recent activity',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
  const Transaction('Electricity payment','28 Oct 2026','− M 200.00',Icons.bolt),
  const Divider(),const Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward),
  TextButton(onPressed:()=>open(const History()),child:const Text('See all transactions'))
@@ -135,7 +172,7 @@ class Loans extends StatelessWidget{
  final ValueChanged<Widget> open;const Loans({super.key,required this.open});
  @override Widget build(BuildContext context)=>Content(title:'My loans',subtitle:'Borrowing and repayments',children:[
  CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- const Text('Current balance (demo)'),const Text('M 5,800.00',style:TextStyle(fontSize:31,fontWeight:FontWeight.bold,color:teal)),
+ const Text('Sample loan balance (demo)'),const Text('M 5,800.00',style:TextStyle(fontSize:31,fontWeight:FontWeight.bold,color:teal)),
  const SizedBox(height:12),const Detail('Product','Personal loan'),const Detail('Status','Active'),
  const Detail('Next due','15 Nov 2026'),const Detail('Instalment','M 650.00'),
  const SizedBox(height:16),ActionButton('View loan details',()=>open(const LoanDetails()))])),
@@ -145,7 +182,7 @@ class Loans extends StatelessWidget{
  const SizedBox(height:16),ActionButton('Start application',()=>open(const ApplyLoan()))])),
  const CardBox(child:ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.check_circle,color:mint),
  title:Text('Previous personal loan'),subtitle:Text('Settled • 2025'),trailing:Text('M 3,000'))),
- const Text('Demo loan balances above are sample amounts only.'),
+ const Text('All loan balances and repayment dates above are fictional examples.'),
  CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('My verified loans',style:TextStyle(fontSize:20,fontWeight:FontWeight.bold)),
  const SizedBox(height:8),
@@ -153,7 +190,7 @@ class Loans extends StatelessWidget{
  const SizedBox(height:14),
  ActionButton('View verified loans',()=>open(const CustomerLoansScreen())),
  ])),
- const Text('DEMO LOANS ONLY — The figures below are fictional and not your real loan account.',
+ const Text('DEMO LOANS ONLY — No real borrower account is linked to this preview.',
  style:TextStyle(fontWeight:FontWeight.w600)),
 
   ]);
@@ -221,9 +258,9 @@ class Wallet extends StatelessWidget{
  @override Widget build(BuildContext context)=>Content(title:'My wallet',subtitle:'Money management',children:[
  Container(padding:const EdgeInsets.all(24),decoration:BoxDecoration(color:teal,borderRadius:BorderRadius.circular(22)),
  child:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
- Text('Available balance',style:TextStyle(color:Colors.white70)),
+ Text('Sample wallet balance',style:TextStyle(color:Colors.white70)),
  SizedBox(height:10),Text('M 2,450.00',style:TextStyle(color:Colors.white,fontSize:34,fontWeight:FontWeight.bold)),
- Text('Demo funds • Not redeemable',style:TextStyle(color:Colors.white70))])),
+ Text('Fictional amount • Not available for withdrawal',style:TextStyle(color:Colors.white70))])),
  CardBox(child:Wrap(spacing:10,runSpacing:10,children:[
  for(final a in ['Add money','Send money','Withdraw','Repay loan'])
  OutlinedButton(onPressed:()=>open(Transfer(action:a)),child:Text(a))])),
