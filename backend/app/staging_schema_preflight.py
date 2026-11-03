@@ -64,7 +64,7 @@ async def inspect_staging_schema(
             schema, list(RELATIONS),
         )
     tables = {row["name"] for row in present}
-    keys = {(row["relation"], row["kind"], row["name"]) for row in constraints}
+    keys = {(row["relation"], (row["kind"].decode("ascii") if isinstance(row["kind"], bytes) else row["kind"]), row["name"]) for row in constraints}
     missing_relations = tuple(r for r in RELATIONS if r not in tables)
     missing_constraints = tuple(
         f"{relation}.{name}" for relation, kind, name in CONSTRAINTS
