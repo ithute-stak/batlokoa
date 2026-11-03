@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_details.dart';
+import 'activity_history.dart';
 
 void main() => runApp(const BatlokoaApp());
 const teal=Color(0xFF113F3C), mint=Color(0xFF16A48B), bg=Color(0xFFF4F8F7);
@@ -244,8 +245,9 @@ class Services extends StatelessWidget{
  final ValueChanged<String> onTap;final bool compact;
  const Services({super.key,required this.onTap,this.compact=false});
  @override Widget build(BuildContext context)=>LayoutBuilder(builder:(context,c)=>GridView.count(
- crossAxisCount:c.maxWidth>500?4:2,crossAxisSpacing:9,mainAxisSpacing:9,
- childAspectRatio:compact?1.5:1.65,shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),
+ crossAxisCount:c.maxWidth<220?1:c.maxWidth>500?4:2,crossAxisSpacing:9,mainAxisSpacing:9,
+ mainAxisExtent:(compact?100.0:112.0)*MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0,1.5),
+ shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),
  children:[for(final s in serviceList)InkWell(onTap:()=>onTap(s.name),borderRadius:BorderRadius.circular(14),
  child:Container(decoration:BoxDecoration(color:bg,borderRadius:BorderRadius.circular(14)),
  child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
@@ -331,20 +333,7 @@ class Transaction extends StatelessWidget{
 }
 class History extends StatelessWidget{
  const History({super.key});
- @override Widget build(BuildContext context)=>Subpage(
-   title:'Transaction history',
-   child:CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-     const Text('Sample activity — no real transactions',
-       style:TextStyle(color:Colors.black54)),
-     const SizedBox(height:12),
-     for(final activity in demoActivities)...[
-       Transaction(activity.title,activity.date,activity.amount,activity.icon,
-         onTap:()=>Navigator.push(context,MaterialPageRoute(
-           builder:(_)=>DemoActivityPage(activity:activity)))),
-       const Divider(),
-     ],
-   ])),
- );
+ @override Widget build(BuildContext context)=>const ActivityHistoryPage();
 }
 class Info extends StatelessWidget{
  final String title,body;const Info({super.key,required this.title,required this.body});
