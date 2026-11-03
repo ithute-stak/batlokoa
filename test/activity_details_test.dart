@@ -10,7 +10,7 @@ void main() {
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const DemoActivityPage(activity: demoActivities[0]),
+              builder: (_) => DemoActivityPage(activity: demoActivities[0]),
             ),
           ),
           child: const Text('Open sample'),
