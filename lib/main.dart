@@ -134,6 +134,17 @@ class ActionButton extends StatelessWidget{
    padding:const EdgeInsets.symmetric(vertical:12),
    child:Text(title,textAlign:TextAlign.center))));
 }
+/// Resolve demo bill shortcuts consistently on Home and Pay bills.
+/// No live biller, wallet or payment service is invoked.
+void openDemoService(BuildContext context,String service,ValueChanged<Widget> open){
+ if(service=='Transfers'){
+   open(const Transfer(action:'Send money'));
+ }else if(service=='More'){
+   demo(context,'More billers');
+ }else{
+   open(PayService(service:service));
+ }
+}
 void demo(BuildContext context,String label)=>showDialog<void>(context:context,builder:(ctx)=>AlertDialog(
  title:const Text('Demo preview'),content:Text(label+' is not connected to a financial service. No money moved or application submitted.'),
  actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('OK'))]));
@@ -154,8 +165,8 @@ class Home extends StatelessWidget{
  Column(children:[loanSummary(context),const SizedBox(height:16),quickPayments(context)])),
  CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('Sample recent activity',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
- const Transaction('Electricity payment','28 Oct 2026','− M 200.00',Icons.bolt),
- const Divider(),const Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward),
+ Transaction('Electricity payment','28 Oct 2026','− M 200.00',Icons.bolt,onTap:()=>open(const History())),
+ const Divider(),Transaction('Wallet top-up','26 Oct 2026','+ M 1,000.00',Icons.arrow_downward,onTap:()=>open(const History())),
  TextButton(onPressed:()=>open(const History()),child:const Text('See all transactions'))
  ])),
  ]);
@@ -170,7 +181,7 @@ class Home extends StatelessWidget{
  const SizedBox(height:15),ActionButton('Manage loan',()=>go(1))]));
  Widget quickPayments(BuildContext context)=>CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('Quick payments',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
- Services(onTap:(s)=>open(PayService(service:s)),compact:true)]));
+ Services(onTap:(s)=>openDemoService(context,s,open),compact:true)]));
 }
 class Loans extends StatelessWidget{
  final ValueChanged<Widget> open;const Loans({super.key,required this.open});
@@ -209,6 +220,11 @@ class LoanDetails extends StatelessWidget{
  const Detail('Status','Active'),const SizedBox(height:20),
  ActionButton('Repay loan',()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const Transfer(action:'Repay loan')))),
  const SizedBox(height:18),const DemoRepaymentPreview(),
+ const SizedBox(height:12),
+ OutlinedButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const History())),
+   icon:const Icon(Icons.history),label:const Text('View sample activity')),
+ TextButton.icon(onPressed:()=>Navigator.pop(context),
+   icon:const Icon(Icons.arrow_back),label:const Text('Back to loans')),
   ])));
 }
 class ApplyLoan extends StatefulWidget{const ApplyLoan({super.key});@override State<ApplyLoan> createState()=>_ApplyLoanState();}
@@ -319,7 +335,7 @@ class Bills extends StatelessWidget{
  CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('Choose a service',style:TextStyle(fontSize:20,fontWeight:FontWeight.bold)),
  const SizedBox(height:16),
- Services(onTap:(s){if(s=='Transfers'){open(const Transfer(action:'Send money'));}else if(s=='More'){demo(context,'More billers');}else{open(PayService(service:s));}}),
+ Services(onTap:(s)=>openDemoService(context,s,open)),
  ])),
  const CardBox(child:Text('External providers and bill lookup APIs are not yet connected. All payment flows are demos.')),
   ]);
