@@ -73,9 +73,12 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body:
       DemoFormError(message:'Enter valid demo details'))));
-    final semantics = tester.widget<Semantics>(find.byType(Semantics).first);
-    expect(semantics.properties.liveRegion, isTrue);
-    expect(semantics.properties.label, contains('Form error:'));
+    final errorAnnouncement = find.byWidgetPredicate(
+      (widget) => widget is Semantics &&
+          widget.properties.liveRegion == true &&
+          (widget.properties.label ?? '').startsWith('Form error:'),
+    );
+    expect(errorAnnouncement, findsOneWidget);
     expect(find.text('Enter valid demo details'), findsOneWidget);
   });
 }
