@@ -62,7 +62,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -r backend/requirements-dev.txt
       - name: Test PostgreSQL link mappings, transactions and revocation
-        run: python -m pytest -q backend/tests/test_link_store_postgres.py backend/tests/test_sessions_postgres.py backend/tests/test_oidc_transaction_postgres.py
+        run: python -m pytest -q backend/tests/test_link_store_postgres.py backend/tests/test_sessions_postgres.py backend/tests/test_oidc_transaction_postgres.py backend/tests/test_staging_schema_preflight_postgres.py
 
   analyze-and-test:
     runs-on: ubuntu-latest

@@ -86,3 +86,9 @@ Confirm `flutter analyze`, `flutter test` and `flutter build web --release` pass
 ## Staging OIDC assembly
 
 The staging auth assembly composes approved OIDC client metadata, the pinned JWKS provider, PostgreSQL-backed login/session stores and secure token exchange. It does not activate login routes or financial operations. Real provider discovery and Batlokoa registration remain unverified. The normal app stays disabled by default.
+
+## Phase 14: database and signing-key preflight
+
+The new read-only `inspect_staging_schema` checks for all five required PostgreSQL tables and essential uniqueness/foreign-key constraints after a privileged migration. It never applies migrations or enables live endpoints. CI runs this against an isolated disposable PostgreSQL schema, including deliberate missing-constraint scenarios.
+
+`ApprovedJwksSnapshot` accepts only a separately approved static RSA/RS256 public-key set, supports overlapping key IDs during a reviewed rotation, and refuses unknown, duplicated or unsupported signing keys. No real !thute Auth keys are included, fetched or activated. JWKS retrieval policy, staging client registration, revocation notifications, deployment privileges and live borrower authorization still require separate verification. All customer financial endpoints and IthutePay remain disabled.
