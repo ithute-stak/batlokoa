@@ -4,6 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('welcome screen opens responsive customer app', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     await tester.pumpWidget(const BatlokoaApp());
     expect(find.text('Batlokoa Finance'), findsOneWidget);
     await tester.tap(find.text('Explore demo'));
@@ -13,10 +19,18 @@ void main() {
   });
 
   testWidgets('loans tab opens loan application', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     await tester.pumpWidget(const BatlokoaApp());
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Loans'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Start application'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Start application'));
     await tester.pumpAndSettle();
