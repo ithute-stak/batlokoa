@@ -158,3 +158,27 @@ Only SHA-256 proof and consent reference digests are stored, not raw central acc
 The GitHub Actions workflow runs separate **real PostgreSQL tests** (temporary isolated schemas) for unique keys, concurrent linking, audit transaction rollback, linked lookup, revocation and replay rejection. Existing gateway and Flutter checks continue independently.
 
 **Remaining blockers:** real identity/session token broker, signed borrower proof, tenant verifier, compliance evidence storage, production database migration, and staging acceptance tests. `GET /api/v1/me/loans` remains disabled, and IthutePay still cannot move money.
+
+## Phase 9: central !thute Auth verification and opaque BFF sessions
+
+Verified against the current LoanHub source `apps/backend/services/ithute_auth_service.py`: central access tokens use a trusted JWKS key selector, RS256 signatures, exact issuer/audience, a UUID `sub` (person) and UUID `sid` (central session), and `token_use=access` with `iat`, `nbf`, and `exp` claims. The reference issuer is `https://auth.ithute.co.ls`; Batlokoa's separate audience must be registered and verified before live use. LoanHub's audience (`loanhub`) is **not** accepted for Batlokoa.
+
+`backend/app/auth_verification.py` implements a strict verification component with an injected, trusted signing-key source and positive/negative tests against test-generated RSA keys. Live JWKS discovery, HTTPS allowlisting, bounded refresh/caching and key rollover need an independently reviewed configuration before deployment.
+
+`backend/migrations/002_customer_sessions.sql` and `backend/app/sessions.py` add an **internal**, separately provisioned PostgreSQL-backed session lifecycle. After independently verified central authentication and an active linked customer mapping, it may issue an opaque random session handle with at most a 15-minute lifetime bounded by the central token's expiration. Raw session handles and CSRF tokens are never persisted; only hashes are stored. Session lookup rejects expiration and account revocation. The database stores permanent central `sid` revocation tombstones, and serializes session issuance against central revocation using transactional advisory locks. Internal revoke helpers support logout and central-session invalidation.
+
+Tests use a disposable PostgreSQL instance to verify issuance, separate CSRF proof for state-changing calls, invalid or absent mapping, expiry, logout, unlinking, and central session revocation. A cookie-header helper documents `Secure; HttpOnly; SameSite=Strict` with the `__Host-` prefix.
+
+**No login flow is enabled.** These components are not registered with FastAPI or Flutter. The production route `GET /api/v1/me/loans` remains default-disabled; session issuance must never implicitly establish a LoanHub borrower credential. No real central signing keys, customer identities, or OAuth tokens are committed.
+
+### Remaining controls before production
+
+1. Register Batlokoa as a distinct client with !thute Auth, verify signed OIDC configuration and approved redirect URIs, and use Authorization Code + PKCE with server-mediated HttpOnly sessions. Validate OIDC state/nonce, code exchange, refresh/re-authentication, and token lifetimes.
+2. Provision and harden the central JWKS source, maintain an issuer allowlist, key rotation, outage handling, and audit metrics. Never use unverified key URLs from the access token.
+3. Apply migrations through a privileged job to a dedicated database; bootstrap a least-privilege, secret-managed pool. The app does not create tables at startup.
+4. Integrate and authenticate central session revocation events (and invalidate sessions when central logout/revocation occurs). Never trust a client-originated revocation `sid`.
+5. Implement a CSRF-checked authenticated session middleware; control trusted host, proxy origin, SameSite constraints, strict CORS, cache headers and anti-replay. No cross-origin cookie access.
+6. Verify independent LoanHub borrower-role proof and tenant membership before mapping or displaying actual loans. No admin session may be reused as a borrower credential.
+7. Preserve the official Batlokoa Financial Services logo and verified brand palette throughout the mobile/web application; the backend session changes do not modify visual branding.
+
+IthutePay remains disconnected and all write actions remain disabled.
