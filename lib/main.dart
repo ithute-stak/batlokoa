@@ -65,9 +65,15 @@ class _ShellState extends State<Shell> {
 }
 class CardBox extends StatelessWidget{
  final Widget child;const CardBox({super.key,required this.child});
- @override Widget build(BuildContext context)=>Container(width:double.infinity,padding:const EdgeInsets.all(19),
- decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(23),
- border:Border.all(color:const Color(0xFFE4ECEA))),child:child);
+ @override Widget build(BuildContext context)=>Material(
+   color:Colors.white,
+   clipBehavior:Clip.antiAlias,
+   shape:RoundedRectangleBorder(
+     borderRadius:BorderRadius.circular(23),
+     side:const BorderSide(color:Color(0xFFE4ECEA)),
+   ),
+   child:Padding(padding:const EdgeInsets.all(19),child:child),
+ );
 }
 class Content extends StatelessWidget{
  final String title,subtitle;final List<Widget> children;
