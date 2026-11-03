@@ -96,3 +96,15 @@ Production data validation remains required: prove that the borrower token maps 
 ### Brand system requirement
 
 All new Batlokoa customer screens must inherit the company's approved colour values and official logo from verified brand assets. The payment and loan services do not dictate Batlokoa's frontend appearance. Do not select approximate brand HEX values until the official logo or brand guide has been inspected.
+
+## Phase 5: protected customer loan route (opt-in test boundary)
+
+The `GET /api/v1/me/loans` endpoint now has an authenticated implementation in `backend/app/customer_loans_api.py`. **The default deployment configuration remains HTTP 503** and the current Flutter app remains demo-only.
+
+A trusted server bootstrap must explicitly inject a `ReadRouteConfig` into `app.state.loan_read_config` with an approved HTTPS issuer, Batlokoa-specific audience, trusted RS256 verification key and `LoanReadService`. The service must use a protected customer directory and a LoanHub **borrower-scoped** token broker. There is **no** environment variable that switches this on, no runtime wiring to the real provider, no hardcoded credentials and no direct client-supplied tenant/customer ID.
+
+When a properly configured test bootstrap is injected, the gateway validates a bearer access token before invoking the server-side tenant mapping and read-only LoanHub adapter. Missing/invalid tokens return 401, unauthorized tenant mappings return 403 and upstream unavailability returns 503. A successful response returns only validated loan summaries with `Cache-Control: no-store`. It does **not** display demo loan balances as live values.
+
+**Do not install the test configuration on a public deployment.** Before production access, confirm a reliable OIDC key-discovery/rotation process, real borrower account linking, secure token exchange or consented borrower sessions, server-held session cookie and CSRF controls, replay prevention, audit logging, threat modelling and the exact LoanHub staging access permissions. A token for a LoanHub staff or administrator must never be used for customer loan retrieval.
+
+IthutePay and all finance mutations remain disabled independently.
