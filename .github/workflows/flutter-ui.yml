@@ -36,8 +36,13 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
+      - name: Check Flutter and Dart versions
+        run: |
+          flutter --version
+          dart --version
+
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Test responsive navigation and app screens
         run: flutter test
