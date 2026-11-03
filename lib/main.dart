@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
 import 'demo_finance_components.dart';
+import 'demo_draft_guard.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_history.dart';
@@ -72,7 +73,7 @@ class _ShellState extends State<Shell> {
  leading:const Padding(padding:EdgeInsets.all(16),child:CircleAvatar(backgroundColor:teal,child:Icon(Icons.wallet,color:Colors.white))),
  destinations:[for(int i=0;i<names.length;i++)NavigationRailDestination(icon:Icon(icons[i]),label:Text(names[i]))]),
  Expanded(child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:1100),
- child:KeyedSubtree(key:ValueKey(tab),child:pages[tab])))),
+ child:IndexedStack(index:tab,children:pages)))),
  ])),bottomNavigationBar:wide?null:NavigationBar(selectedIndex:tab,
  onDestinationSelected:(v)=>setState(()=>tab=v),destinations:[
  for(int i=0;i<names.length;i++)NavigationDestination(icon:Icon(icons[i]),label:names[i])]));}
@@ -232,7 +233,8 @@ class _ApplyLoanState extends State<ApplyLoan>{
  int step=0,months=6;double amount=5000;String purpose='Personal';final income=TextEditingController();
  final incomeSource=TextEditingController();
  @override void dispose(){income.dispose();incomeSource.dispose();super.dispose();}
- @override Widget build(BuildContext context)=>Subpage(title:'Apply for a loan',child:CardBox(child:Column(
+ bool get hasDraft=>step>0 || amount!=5000 || months!=6 || purpose!='Personal' || income.text.isNotEmpty || incomeSource.text.isNotEmpty;
+ @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:'Apply for a loan',child:CardBox(child:Column(
  crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text('Step '+(step+1).toString()+' of 3'),const SizedBox(height:8),
  LinearProgressIndicator(value:(step+1)/3),const SizedBox(height:22),
@@ -249,8 +251,8 @@ class _ApplyLoanState extends State<ApplyLoan>{
  onChanged:(v)=>setState(()=>purpose=v??purpose)),
  ]else if(step==1)...[
  const Text('Affordability details',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
- const SizedBox(height:14),TextField(controller:incomeSource,textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Employment / income source')),
- const SizedBox(height:12),TextField(controller:income,keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,
+ const SizedBox(height:14),TextField(controller:incomeSource,onChanged:(_)=>setState((){}),textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Employment / income source')),
+ const SizedBox(height:12),TextField(controller:income,onChanged:(_)=>setState((){}),keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,
  decoration:const InputDecoration(labelText:'Monthly income in LSL')),
  ]else...[
  const Text('Review your request',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
@@ -269,7 +271,7 @@ class _ApplyLoanState extends State<ApplyLoan>{
  }
  if(step<2){setState(()=>step++);}else{demo(context,'Loan application');}
  }),
-  ])));
+  ]))));
 }
 class Wallet extends StatelessWidget{
  final ValueChanged<Widget> open;const Wallet({super.key,required this.open});
@@ -291,7 +293,8 @@ class _TransferState extends State<Transfer>{
  String method='M-Pesa';final form=GlobalKey<FormState>();
  final amountController=TextEditingController();final referenceController=TextEditingController();
  @override void dispose(){amountController.dispose();referenceController.dispose();super.dispose();}
- @override Widget build(BuildContext context)=>Subpage(title:widget.action,child:CardBox(child:Form(
+ bool get hasDraft=>method!='M-Pesa' || amountController.text.isNotEmpty || referenceController.text.isNotEmpty;
+ @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:widget.action,child:CardBox(child:Form(
  key:form,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text(widget.action,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
  const SizedBox(height:16),
@@ -299,16 +302,16 @@ class _TransferState extends State<Transfer>{
  items:['M-Pesa','Bank account','Wallet'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
  onChanged:(v)=>setState(()=>method=v??method)),
  if(widget.action!='Repay loan')...[const SizedBox(height:12),
- TextFormField(controller:referenceController,textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Recipient / account number'),
+ TextFormField(controller:referenceController,onChanged:(_)=>setState((){}),textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Recipient / account number'),
  validator:DemoInputValidator.reference)],
  const SizedBox(height:12),
- TextFormField(controller:amountController,keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,onChanged:(_)=>setState((){}),keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:DemoInputValidator.amount),
  const SizedBox(height:15),
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
  const SizedBox(height:20),
  ActionButton('Review transaction',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.action,amount:amountController.text.trim(),reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));}),
-  ]))));
+  ])))));
 }
 const serviceList=<({String name,IconData icon})>[
  (name:'Electricity',icon:Icons.bolt),(name:'WASCO water',icon:Icons.water_drop),
@@ -345,22 +348,23 @@ class _PayServiceState extends State<PayService>{
  final form=GlobalKey<FormState>();
  final amountController=TextEditingController(),referenceController=TextEditingController();
  @override void dispose(){amountController.dispose();referenceController.dispose();super.dispose();}
- @override Widget build(BuildContext context)=>Subpage(title:widget.service,child:CardBox(child:Form(key:form,
+ bool get hasDraft=>amountController.text.isNotEmpty || referenceController.text.isNotEmpty;
+ @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:widget.service,child:CardBox(child:Form(key:form,
  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text('Pay '+widget.service,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
  const SizedBox(height:18),
- TextFormField(controller:referenceController,textInputAction:TextInputAction.next,decoration:InputDecoration(labelText:switch(widget.service){
+ TextFormField(controller:referenceController,onChanged:(_)=>setState((){}),textInputAction:TextInputAction.next,decoration:InputDecoration(labelText:switch(widget.service){
  'Electricity'=>'Meter number','WASCO water'=>'Water account number','School fees'=>'Student reference',
  'TV subscriptions'=>'Subscriber number',_=>'Mobile phone number'}),
  validator:DemoInputValidator.reference),
  const SizedBox(height:12),
- TextFormField(controller:amountController,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,onChanged:(_)=>setState((){}),keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:DemoInputValidator.amount),
  const SizedBox(height:16),
  const Text('Biller validation, settlement and receipts require an approved provider integration.'),
  const SizedBox(height:18),
  ActionButton('Review payment',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.service,amount:amountController.text.trim(),reference:referenceController.text.trim(),method:'Wallet (demo)')));}),
-  ]))));
+  ])))));
 }
 class Profile extends StatelessWidget{
  final ValueChanged<Widget> open;final VoidCallback exit;

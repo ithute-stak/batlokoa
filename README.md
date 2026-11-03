@@ -158,3 +158,11 @@ The widgets are purely presentational. Their demo action callbacks continue to n
 The **Home → Loans → Loan details → Sample activity → Back to loans** journey now provides clear demo navigation through the existing screens. Home recent-activity rows open the searchable fictional transaction-history view. Home and Pay bills share the same bill-service routing: the Transfers shortcut opens a demo Send money form; More explicitly shows a disabled preview; other services open existing bill payment previews. This corrects the earlier difference between Home and Pay bills shortcuts.
 
 Dedicated Flutter widget tests cover this cross-screen navigation, the return path and both shortcut exceptions. All account balances, loan schedules, transaction histories and payment reviews remain demo-only; nothing is submitted to LoanHub, !thute Auth or IthutePay.
+
+## Phase 22 — retained tab positions and unsent preview forms
+
+The five demo tabs now use `IndexedStack` to keep their widget trees alive while the user switches tabs. This preserves in-session list scroll position without introducing persistent storage or retaining any real customer data.
+
+Demo loan applications, wallet transfers and bill-payment forms use `DemoDraftGuard`: a back gesture or navigation attempt on a changed form asks the user to **Keep editing** or **Discard draft**. Blank forms exit normally, while the confirmation dialog explicitly states that no payment or application has been submitted. Drafts are in-memory only, and returning from a read-only payment review does not clear the form. Flutter tests exercise tab state retention, editing/discarding and normal blank-form navigation at narrow mobile sizes.
+
+**No live loan applications, balances, real authentication or IthutePay payments were enabled.** The current colours remain provisional pending official Batlokoa brand artwork and codes.
