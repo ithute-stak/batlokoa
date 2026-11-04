@@ -1,0 +1,42 @@
+# Image-only, disabled-demo deployment. No build from source on production VPS.
+# Mount this behind the VPS's existing TLS reverse proxy after checking its
+# current ownership of the batlokoa.co.ls hostname. Never expose API publicly.
+name: batlokoa-demo
+services:
+  batlokoa-web:
+    image: ghcr.io/ithute-stak/batlokoa-web:demo-${BATLOKOA_RELEASE_SHA:?Set verified published image commit SHA}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${BATLOKOA_WEB_PORT:-18088}:8080"
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  batlokoa-gateway:
+    image: ghcr.io/ithute-stak/batlokoa-gateway:demo-${BATLOKOA_RELEASE_SHA:?Set verified published image commit SHA}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${BATLOKOA_API_PORT:-18089}:8000"
+    tmpfs:
+      - /tmp
+    environment:
+      PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3

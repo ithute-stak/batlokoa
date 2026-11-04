@@ -109,6 +109,13 @@ jobs:
       - name: Smoke-test running web container
         run: bash scripts/smoke_web.sh
 
+      - name: Validate image-only disabled VPS demo manifest
+        env:
+          BATLOKOA_RELEASE_SHA: ${{ github.sha }}
+        run: |
+          docker compose -f compose.vps.demo.yml config --quiet
+          test "$(docker compose -f compose.vps.demo.yml config --images | wc -l)" -eq 2
+
       - name: Compose disabled staging stack and smoke-test safe defaults
         run: |
           set -euo pipefail

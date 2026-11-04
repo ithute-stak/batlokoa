@@ -1,0 +1,72 @@
+name: Publish Batlokoa disabled-demo Docker images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-demo-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout selected commit
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate web platform and dependencies
+        run: |
+          flutter create . --platforms=android,web --no-pub
+          flutter pub get
+
+      - name: Verify web application
+        run: |
+          flutter analyze --no-fatal-infos
+          flutter test
+          flutter build web --release
+
+      - name: Check image build contracts
+        run: |
+          docker build -f Dockerfile.web -t batlokoa-web:verify .
+          docker build -f Dockerfile.gateway -t batlokoa-gateway:verify .
+          docker run --rm batlokoa-web:verify nginx -t
+
+      - name: Prepare image tags
+        id: tags
+        shell: bash
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish immutable disabled-demo web image
+        run: |
+          IMAGE="ghcr.io/${{ steps.tags.outputs.owner }}/batlokoa-web:demo-${{ steps.tags.outputs.sha }}"
+          docker tag batlokoa-web:verify "$IMAGE"
+          docker push "$IMAGE"
+
+      - name: Publish immutable disabled-demo gateway image
+        run: |
+          IMAGE="ghcr.io/${{ steps.tags.outputs.owner }}/batlokoa-gateway:demo-${{ steps.tags.outputs.sha }}"
+          docker tag batlokoa-gateway:verify "$IMAGE"
+          docker push "$IMAGE"
+
+      - name: Print image-only deployment identifiers
+        run: |
+          echo "Web: ghcr.io/${{ steps.tags.outputs.owner }}/batlokoa-web:demo-${{ steps.tags.outputs.sha }}"
+          echo "Gateway: ghcr.io/${{ steps.tags.outputs.owner }}/batlokoa-gateway:demo-${{ steps.tags.outputs.sha }}"
+          echo "No VPS deployment or live financial activation was performed."
