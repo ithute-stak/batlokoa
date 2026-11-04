@@ -21,6 +21,7 @@ class DemoPaymentReview extends StatefulWidget {
 
 class _DemoPaymentReviewState extends State<DemoPaymentReview> {
   bool _confirmationOpen = false;
+  bool _previewViewed = false;
 
   Future<void> _previewConfirmation() async {
     if (_confirmationOpen) return;
@@ -42,7 +43,7 @@ class _DemoPaymentReviewState extends State<DemoPaymentReview> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _confirmationOpen = false);
+      if (mounted) setState(() { _confirmationOpen = false; _previewViewed = true; });
     }
   }
 
@@ -100,6 +101,18 @@ class _DemoPaymentReviewState extends State<DemoPaymentReview> {
                         label: const Text('Preview confirmation'),
                       ),
                       const SizedBox(height: 8),
+                      if (_previewViewed) Semantics(
+                        container: true,
+                        liveRegion: true,
+                        label: 'Preview closed. No payment was made. Your details are unchanged.',
+                        child: const ExcludeSemantics(
+                          child: Text(
+                            'Preview closed — no payment was made. Your details are unchanged.',
+                            key: Key('demo-preview-closed-status'),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
                       OutlinedButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Edit details'),
