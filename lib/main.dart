@@ -302,7 +302,30 @@ class Transfer extends StatefulWidget{final String action;const Transfer({super.
 class _TransferState extends State<Transfer>{
  String method='M-Pesa';final form=GlobalKey<FormState>();
  final amountController=TextEditingController();final referenceController=TextEditingController();
- @override void dispose(){amountController.dispose();referenceController.dispose();super.dispose();}
+ final referenceFocus=FocusNode(),amountFocus=FocusNode();
+ bool showFormError=false;
+ @override void dispose(){amountController.dispose();referenceController.dispose();referenceFocus.dispose();amountFocus.dispose();super.dispose();}
+ void onFormEdit(){
+   if(showFormError && (widget.action=='Repay loan' || DemoInputValidator.reference(referenceController.text)==null)
+       && DemoInputValidator.amount(amountController.text)==null){
+     setState(()=>showFormError=false);
+   } else {
+     setState((){});
+   }
+ }
+ void reviewTransaction(){
+   final referenceInvalid=widget.action!='Repay loan' && DemoInputValidator.reference(referenceController.text)!=null;
+   final amountInvalid=DemoInputValidator.amount(amountController.text)!=null;
+   if(!form.currentState!.validate() || referenceInvalid || amountInvalid){
+     setState(()=>showFormError=true);
+     (referenceInvalid?referenceFocus:amountFocus).requestFocus();
+     return;
+   }
+   setState(()=>showFormError=false);
+   Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(
+     title:widget.action,amount:amountController.text.trim(),
+     reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));
+ }
  bool get hasDraft=>method!='M-Pesa' || amountController.text.isNotEmpty || referenceController.text.isNotEmpty;
  @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:widget.action,child:CardBox(child:Form(
  key:form,autovalidateMode:AutovalidateMode.onUserInteraction,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -312,15 +335,19 @@ class _TransferState extends State<Transfer>{
  items:['M-Pesa','Bank account','Wallet'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
  onChanged:(v)=>setState(()=>method=v??method)),
  if(widget.action!='Repay loan')...[const SizedBox(height:12),
- TextFormField(controller:referenceController,onChanged:(_)=>setState((){}),textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Recipient / account number'),
+ TextFormField(controller:referenceController,focusNode:referenceFocus,onChanged:(_)=>onFormEdit(),textInputAction:TextInputAction.next,onFieldSubmitted:(_)=>amountFocus.requestFocus(),decoration:const InputDecoration(labelText:'Recipient / account number'),
  validator:DemoInputValidator.reference)],
  const SizedBox(height:12),
- TextFormField(controller:amountController,onChanged:(_)=>setState((){}),keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,focusNode:amountFocus,onChanged:(_)=>onFormEdit(),keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:DemoInputValidator.amount),
  const SizedBox(height:15),
  const Text('Final transaction fees will come from IthutePay.',style:TextStyle(color:Colors.black54)),
+ if(showFormError)...[
+ const SizedBox(height:14),
+ const DemoFormError(message:'Correct the highlighted payment details before reviewing. No money has moved.'),
+ ],
  const SizedBox(height:20),
- ActionButton('Review transaction',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.action,amount:amountController.text.trim(),reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));}),
+ ActionButton('Review transaction',reviewTransaction),
   ])))));
 }
 const serviceList=<({String name,IconData icon})>[
@@ -357,23 +384,50 @@ class PayService extends StatefulWidget{final String service;const PayService({s
 class _PayServiceState extends State<PayService>{
  final form=GlobalKey<FormState>();
  final amountController=TextEditingController(),referenceController=TextEditingController();
- @override void dispose(){amountController.dispose();referenceController.dispose();super.dispose();}
+ final referenceFocus=FocusNode(),amountFocus=FocusNode();
+ bool showFormError=false;
+ @override void dispose(){amountController.dispose();referenceController.dispose();referenceFocus.dispose();amountFocus.dispose();super.dispose();}
+ void onFormEdit(){
+   if(showFormError && DemoInputValidator.reference(referenceController.text)==null
+       && DemoInputValidator.amount(amountController.text)==null){
+     setState(()=>showFormError=false);
+   } else {
+     setState((){});
+   }
+ }
+ void reviewPayment(){
+   final referenceInvalid=DemoInputValidator.reference(referenceController.text)!=null;
+   final amountInvalid=DemoInputValidator.amount(amountController.text)!=null;
+   if(!form.currentState!.validate() || referenceInvalid || amountInvalid){
+     setState(()=>showFormError=true);
+     (referenceInvalid?referenceFocus:amountFocus).requestFocus();
+     return;
+   }
+   setState(()=>showFormError=false);
+   Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(
+     title:widget.service,amount:amountController.text.trim(),
+     reference:referenceController.text.trim(),method:'Wallet (demo)')));
+ }
  bool get hasDraft=>amountController.text.isNotEmpty || referenceController.text.isNotEmpty;
  @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:widget.service,child:CardBox(child:Form(key:form,autovalidateMode:AutovalidateMode.onUserInteraction,
  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  Text('Pay '+widget.service,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
  const SizedBox(height:18),
- TextFormField(controller:referenceController,onChanged:(_)=>setState((){}),textInputAction:TextInputAction.next,decoration:InputDecoration(labelText:switch(widget.service){
+ TextFormField(controller:referenceController,focusNode:referenceFocus,onChanged:(_)=>onFormEdit(),textInputAction:TextInputAction.next,onFieldSubmitted:(_)=>amountFocus.requestFocus(),decoration:InputDecoration(labelText:switch(widget.service){
  'Electricity'=>'Meter number','WASCO water'=>'Water account number','School fees'=>'Student reference',
  'TV subscriptions'=>'Subscriber number',_=>'Mobile phone number'}),
  validator:DemoInputValidator.reference),
  const SizedBox(height:12),
- TextFormField(controller:amountController,onChanged:(_)=>setState((){}),keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Amount in LSL'),
+ TextFormField(controller:amountController,focusNode:amountFocus,onChanged:(_)=>onFormEdit(),keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'Amount in LSL'),
  validator:DemoInputValidator.amount),
  const SizedBox(height:16),
  const Text('Biller validation, settlement and receipts require an approved provider integration.'),
+ if(showFormError)...[
+ const SizedBox(height:14),
+ const DemoFormError(message:'Correct the highlighted bill-payment details before reviewing. No money has moved.'),
+ ],
  const SizedBox(height:18),
- ActionButton('Review payment',(){if(form.currentState!.validate())Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(title:widget.service,amount:amountController.text.trim(),reference:referenceController.text.trim(),method:'Wallet (demo)')));}),
+ ActionButton('Review payment',reviewPayment),
   ])))));
 }
 class Profile extends StatelessWidget{
