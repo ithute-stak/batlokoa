@@ -195,6 +195,23 @@ class Home extends StatelessWidget{
  const SizedBox(height:15),ActionButton('Manage loan',()=>go(1))]));
  Widget quickPayments(BuildContext context)=>CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
  const Text('Quick payments',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+ const SizedBox(height:8),
+ const Text('Explore sample payment services or open an account overview. No funds will move.',
+   style:TextStyle(color:Colors.black54,fontSize:12)),
+ const SizedBox(height:12),
+ Wrap(spacing:8,runSpacing:8,children:[
+   OutlinedButton.icon(
+     key:const Key('home-wallet-overview'),
+     onPressed:()=>go(2),
+     icon:const Icon(Icons.account_balance_wallet_outlined),
+     label:const Text('Wallet overview')),
+   OutlinedButton.icon(
+     key:const Key('home-all-bills'),
+     onPressed:()=>go(3),
+     icon:const Icon(Icons.grid_view_outlined),
+     label:const Text('All bill services')),
+ ]),
+ const SizedBox(height:12),
  Services(onTap:(s)=>openDemoService(context,s,open),compact:true)]));
 }
 class Loans extends StatelessWidget{
