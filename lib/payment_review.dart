@@ -40,9 +40,16 @@ class DemoPaymentReview extends StatelessWidget {
                         style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'No money will be sent. This summary uses the details you entered.',
-                        textAlign: TextAlign.center,
+                      Semantics(
+                        container: true,
+                        liveRegion: true,
+                        label: 'Demo preview only. No money will be sent.',
+                        child: ExcludeSemantics(
+                          child: Text(
+                            'No money will be sent. This summary uses the details you entered.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ),
                       const Divider(height: 36),
                       _line('Service', title),
@@ -100,19 +107,25 @@ class DemoPaymentReview extends StatelessWidget {
         final amount = Text(value,
           textAlign: stacked ? TextAlign.start : TextAlign.end,
           style: const TextStyle(fontWeight: FontWeight.w700));
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          child: stacked
-              ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  label,
-                  const SizedBox(height: 4),
-                  amount,
-                ])
-              : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: label),
-                  const SizedBox(width: 12),
-                  Flexible(child: amount),
-                ]),
+        return Semantics(
+          container: true,
+          label: '$title: $value',
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: stacked
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      label,
+                      const SizedBox(height: 4),
+                      amount,
+                    ])
+                  : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: label),
+                      const SizedBox(width: 12),
+                      Flexible(child: amount),
+                    ]),
+            ),
+          ),
         );
       },
     ),
