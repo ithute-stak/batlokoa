@@ -313,7 +313,7 @@ class _TransferState extends State<Transfer>{
      setState((){});
    }
  }
- void reviewTransaction(){
+ void reviewTransaction() async {
    final referenceInvalid=widget.action!='Repay loan' && DemoInputValidator.reference(referenceController.text)!=null;
    final amountInvalid=DemoInputValidator.amount(amountController.text)!=null;
    if(!form.currentState!.validate() || referenceInvalid || amountInvalid){
@@ -322,9 +322,10 @@ class _TransferState extends State<Transfer>{
      return;
    }
    setState(()=>showFormError=false);
-   Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(
+   final edit = await Navigator.push<bool>(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(
      title:widget.action,amount:amountController.text.trim(),
      reference:widget.action=='Repay loan'?'BTL-DEMO-1001':referenceController.text.trim(),method:method)));
+   if(edit==true && mounted) amountFocus.requestFocus();
  }
  bool get hasDraft=>method!='M-Pesa' || amountController.text.isNotEmpty || referenceController.text.isNotEmpty;
  @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:widget.action,child:CardBox(child:Form(
@@ -395,7 +396,7 @@ class _PayServiceState extends State<PayService>{
      setState((){});
    }
  }
- void reviewPayment(){
+ void reviewPayment() async {
    final referenceInvalid=DemoInputValidator.reference(referenceController.text)!=null;
    final amountInvalid=DemoInputValidator.amount(amountController.text)!=null;
    if(!form.currentState!.validate() || referenceInvalid || amountInvalid){
@@ -404,9 +405,10 @@ class _PayServiceState extends State<PayService>{
      return;
    }
    setState(()=>showFormError=false);
-   Navigator.push(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(
+   final edit = await Navigator.push<bool>(context,MaterialPageRoute(builder:(_)=>DemoPaymentReview(
      title:widget.service,amount:amountController.text.trim(),
      reference:referenceController.text.trim(),method:'Wallet (demo)')));
+   if(edit==true && mounted) amountFocus.requestFocus();
  }
  bool get hasDraft=>amountController.text.isNotEmpty || referenceController.text.isNotEmpty;
  @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:widget.service,child:CardBox(child:Form(key:form,autovalidateMode:AutovalidateMode.onUserInteraction,
