@@ -172,3 +172,14 @@ Demo loan applications, wallet transfers and bill-payment forms use `DemoDraftGu
 The loan affordability step now shows a persistent, visible inline error summary instead of a temporary snackbar when required demo income details are missing or invalid. The error clears when the user resumes editing, without resetting earlier loan choices. The shared `DemoFormError` component marks the error as a screen-reader live region. Transfer and biller payment previews now validate fields as users interact with them, so an invalid amount can be corrected before reviewing a non-transactional confirmation.
 
 Flutter widget tests cover loan error recovery, payment amount correction and accessibility semantics. This is **frontend-only** preview logic; production financial values, compliance checks and account permissions must still be validated by their authorized services. No real LoanHub loan application, login or IthutePay payment is enabled.
+
+
+## Phase 34 — inactive customer-loan gateway adapter
+
+`lib/gateway_customer_loan_repository.dart` provides an **explicitly opt-in**, read-only Flutter contract-test adapter for a future Batlokoa HTTPS customer gateway. The adapter is **disabled by default**; the customer-facing `CustomerLoansScreen` still uses `DisabledCustomerLoanRepository` and makes no network requests.
+
+**Important:** `/api/v1/customer/loans` is a **provisional candidate contract**, not a verified production LoanHub endpoint. Do not enable this client against a real service until the Batlokoa gateway route, HTTPS origin, server-owned tenant/customer identity, authenticated session and borrower-level authorisation have all been independently verified. The client cannot confer authorisation.
+
+The adapter makes at most a read-only GET, never attaches a bearer token, tenant or customer ID, refuses redirects, non-JSON/unexpected HTTP responses, oversized data, invalid currencies and malformed or duplicate loan records. An unavailable or non-authorised response never falls back to demo balances. The new `test/phase34_gateway_customer_loan_test.dart` exercises these failure paths entirely with mocked HTTP; it does **not** establish a working LoanHub connection.
+
+Before activation: confirm the actual route and response schema with the LoanHub/Batlokoa backend team; separately test cookie/session handling and same-origin CSRF protections; enforce tenant and borrower permissions on the server; require verified HTTPS; perform staging end-to-end authorization and information-leak tests. Financial writes and IthutePay stay disabled.
