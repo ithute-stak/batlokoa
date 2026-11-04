@@ -138,3 +138,53 @@ def test_payment_routes_remain_disabled_when_loan_read_config_exists():
     response = TestClient(app).post("/api/v1/payments/intents", json={})
     assert response.status_code == 503
     assert response.json()["code"] == "INTEGRATION_DISABLED"
+
+
+def test_spoofed_tenant_and_borrower_hints_do_not_override_server_mapping():
+    row = LoanSummary(
+        loan_id="safe-loan", status="active",
+        outstanding=Money(currency="LSL", minor_units=100),
+    )
+    adapter = configure(records=[row])
+    response = TestClient(app).get(
+        "/api/v1/me/loans?tenant_id=other-company&customer_id=someone-else",
+        headers={
+            "Authorization": f"Bearer {token()}",
+            "X-Tenant-Id": "other-company",
+            "X-Customer-Id": "someone-else",
+            "X-Company-ID": "other-company",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["loans"][0]["loan_id"] == "safe-loan"
+    assert adapter.calls == [(COMPANY, BORROWER)]
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_spoofed_headers_and_query_without_identity_are_not_authorization():
+    adapter = configure()
+    response = TestClient(app).get(
+        "/api/v1/me/loans?tenant_id=" + COMPANY + "&customer_id=" + BORROWER,
+        headers={
+            "X-Tenant-Id": COMPANY,
+            "X-Customer-Id": BORROWER,
+            "X-User-Id": "subject-1",
+        },
+    )
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHENTICATED"
+    assert adapter.calls == []
+
+
+def test_wrong_signed_subject_does_not_receive_someone_elses_loans():
+    adapter = configure()
+    response = get_loans(token(subject="another-customer"))
+    assert response.status_code == 403
+    assert response.json()["code"] == "NOT_AUTHORIZED"
+    assert adapter.calls == []
+
+
+def test_flutter_contract_route_is_exact_and_legacy_candidate_is_not_available():
+    client = TestClient(app)
+    assert client.get("/api/v1/customer/loans").status_code == 404
+    assert client.get("/api/v1/me/loans").status_code == 503
