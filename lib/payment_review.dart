@@ -40,7 +40,7 @@ class DemoPaymentReview extends StatelessWidget {
                         style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-                      const Semantics(
+                      Semantics(
                         container: true,
                         liveRegion: true,
                         label: 'Demo preview only. No money will be sent.',
