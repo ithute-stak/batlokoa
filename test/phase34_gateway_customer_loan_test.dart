@@ -7,7 +7,7 @@ import 'package:http/testing.dart';
 void main() {
   final origin = Uri.parse('https://batlokoa.example.test');
   GatewayCustomerLoanRepository repository(
-    MockClient client, {bool enabled = true, String path = '/api/v1/customer/loans'}
+    MockClient client, {bool enabled = true, String path = '/api/v1/me/loans'}
   ) => GatewayCustomerLoanRepository(
     origin: origin, client: client, approvedPath: path, enabled: enabled);
 
@@ -31,7 +31,7 @@ void main() {
       calls++;
       expect(request.method, 'GET');
       expect(request.url.toString(),
-          'https://batlokoa.example.test/api/v1/customer/loans');
+          'https://batlokoa.example.test/api/v1/me/loans');
       expect(request.followRedirects, isFalse);
       expect(request.headers['Accept'], 'application/json');
       expect(request.headers.containsKey('Authorization'), isFalse);
@@ -95,7 +95,7 @@ void main() {
       expect(() => GatewayCustomerLoanRepository(
           origin: Uri.parse(uri),
           client: MockClient((_) async => jsonResponse('{"loans":[]}')),
-          approvedPath: '/api/v1/customer/loans'), throwsArgumentError);
+          approvedPath: '/api/v1/me/loans'), throwsArgumentError);
     }
     expect(() => repository(
       MockClient((_) async => jsonResponse('{"loans":[]}')),
