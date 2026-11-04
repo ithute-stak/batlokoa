@@ -114,7 +114,7 @@ class _DemoPaymentReviewState extends State<DemoPaymentReview> {
                         ),
                       ),
                       OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => Navigator.pop(context, true),
                         child: const Text('Edit details'),
                       ),
                       const SizedBox(height: 8),
