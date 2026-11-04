@@ -3,6 +3,7 @@ import 'batlokoa_design.dart';
 import 'demo_finance_components.dart';
 import 'demo_draft_guard.dart';
 import 'demo_form_error.dart';
+import 'demo_loan_progress.dart';
 import 'customer_flows.dart';
 import 'payment_review.dart';
 import 'activity_history.dart';
@@ -238,8 +239,7 @@ class _ApplyLoanState extends State<ApplyLoan>{
  bool get hasDraft=>step>0 || amount!=5000 || months!=6 || purpose!='Personal' || income.text.isNotEmpty || incomeSource.text.isNotEmpty;
  @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:'Apply for a loan',child:CardBox(child:Column(
  crossAxisAlignment:CrossAxisAlignment.start,children:[
- Text('Step '+(step+1).toString()+' of 3'),const SizedBox(height:8),
- LinearProgressIndicator(value:(step+1)/3),const SizedBox(height:22),
+ DemoLoanProgress(step:step),const SizedBox(height:22),
  if(step==0)...[
  const Text('Choose your loan',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
  const SizedBox(height:18),Text('Requested: M '+amount.round().toString()),
