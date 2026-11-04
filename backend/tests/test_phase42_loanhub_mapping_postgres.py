@@ -139,3 +139,76 @@ def test_invalid_approved_tenant_and_unavailable_db_denied(mapped_db):
     blocked = LoanHubBorrowerMappingResolver(
         tenant_id=str(uuid4()), connect=unavailable)
     assert blocked(str(user)) is None
+
+
+@pytest.mark.asyncio
+async def test_full_mocked_token_to_borrower_loan_chain_revokes_after_unlink(mapped_db):
+    """Signed token -> /auth/me -> real PG mapping -> broker -> GET /loans."""
+    from datetime import datetime, timedelta, timezone
+    import httpx
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from backend.app.borrower_credential_gate import GuardedBorrowerTokenSource
+    from backend.app.loanhub_grant_broker import LoanHubBorrowerGrantBroker
+    from backend.app.loanhub_identity_verifier import LoanHubIdentityVerifier
+    from backend.app.loanhub_adapter import LoanHubBorrowerReadAdapter, LoanHubReadError
+
+    mapping, schema, user, borrower, tenant, _ = mapped_db
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    token = jwt.encode({
+        "user_id": str(user), "token_type": "access",
+        "session_jti": str(uuid4()), "session_version": 1,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+    }, private, algorithm="RS256")
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/api/v1/auth/me":
+            return httpx.Response(200, json={
+                "id": str(user), "role": "borrower",
+                "is_active": True, "is_verified": True,
+                "must_change_password": False,
+            })
+        if request.url.path == "/api/v1/loans/":
+            return httpx.Response(200, json=[{
+                "id": str(uuid4()), "company_id": str(tenant),
+                "borrower_id": str(borrower),
+                "balance": "51.25", "status": "active",
+            }])
+        return httpx.Response(404)
+
+    sync_client = httpx.Client(transport=httpx.MockTransport(handler))
+    async_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        verifier = LoanHubIdentityVerifier(
+            base_url="https://loanhub.example.test",
+            public_key=private.public_key(),
+            resolve_borrower_mapping=mapping,
+            client=sync_client,
+        )
+        vault = lambda tenant_id, borrower_id: token
+        grant_source = GuardedBorrowerTokenSource(LoanHubBorrowerGrantBroker(
+            token_for=vault, verify_token_for=verifier,
+        ))
+        adapter = LoanHubBorrowerReadAdapter(
+            base_url="https://loanhub.example.test",
+            borrower_token_for=grant_source,
+            client=async_client,
+        )
+        results = await adapter.list_customer_loans(
+            tenant_id=str(tenant), customer_id=str(borrower))
+        assert results[0].outstanding.minor_units == 5125
+        assert [req.url.path for req in requests] == [
+            "/api/v1/auth/me", "/api/v1/loans/",
+        ]
+        modify(schema, 'DELETE FROM "{schema}".client_company_loan')
+        with pytest.raises(LoanHubReadError):
+            await adapter.list_customer_loans(
+                tenant_id=str(tenant), customer_id=str(borrower))
+        # Verification may reach /auth/me, but revocation blocks /loans.
+        assert [req.url.path for req in requests].count("/api/v1/loans/") == 1
+    finally:
+        sync_client.close()
+        await async_client.aclose()
