@@ -6,7 +6,6 @@ void main() {
   testWidgets('Payment preview exposes screen-reader summary and warning',
       (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     await tester.pumpWidget(const MaterialApp(
       home: DemoPaymentReview(
         title: 'Electricity',
@@ -35,6 +34,7 @@ void main() {
     }
     expect(find.text('No money will be sent. This summary uses the details you entered.'),
         findsOneWidget);
+    semantics.dispose();
   });
 
   testWidgets('Preview confirmation never represents a successful payment',
@@ -47,6 +47,8 @@ void main() {
         method: 'M-Pesa',
       ),
     ));
+    await tester.ensureVisible(find.text('Preview confirmation'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Preview confirmation'));
     await tester.pumpAndSettle();
     expect(find.text('Demo complete'), findsOneWidget);
