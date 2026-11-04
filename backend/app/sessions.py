@@ -142,7 +142,7 @@ class PostgresSessionStore:
                 WHERE s.token_sha256=$1 AND s.revoked_at IS NULL
                 AND s.expires_at > now() AND l.revoked_at IS NULL
                 AND NOT EXISTS (
-                    SELECT 1 FROM ${this._revocations} r
+                    SELECT 1 FROM {self._revocations} r
                     WHERE r.central_sid=s.central_sid
                 )""",
                 _digest(token),
