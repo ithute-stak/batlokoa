@@ -183,3 +183,12 @@ Flutter widget tests cover loan error recovery, payment amount correction and ac
 The adapter makes at most a read-only GET, never attaches a bearer token, tenant or customer ID, refuses redirects, non-JSON/unexpected HTTP responses, oversized data, invalid currencies and malformed or duplicate loan records. An unavailable or non-authorised response never falls back to demo balances. The new `test/phase34_gateway_customer_loan_test.dart` exercises these failure paths entirely with mocked HTTP; it does **not** establish a working LoanHub connection.
 
 Before activation: confirm the actual route and response schema with the LoanHub/Batlokoa backend team; separately test cookie/session handling and same-origin CSRF protections; enforce tenant and borrower permissions on the server; require verified HTTPS; perform staging end-to-end authorization and information-leak tests. Financial writes and IthutePay stay disabled.
+
+
+## Phase 35 — gateway route reconciliation and authorization gates
+
+The Batlokoa backend currently exposes the **disabled-by-default** customer-loan read route at `GET /api/v1/me/loans` (see `backend/app/customer_loans_api.py`). Phase 35 aligns the opt-in Flutter contract-test adapter with that actual repository route, instead of the non-existent candidate `/api/v1/customer/loans`. This is a repository-level contract reconciliation, **not** validation of a production LoanHub connection.
+
+**Authentication gap:** The existing gateway loan route requires an RS256-verified bearer token and backend-owned tenant/customer lookup. The Flutter contract-test adapter deliberately does not hold bearer credentials. Thus, enabling only its opt-in flag is insufficient: requests will be denied unless a separately approved and tested same-origin customer-session BFF contract is implemented. Do **not** insert service credentials or customer/tenant IDs in Flutter to bypass that gap.
+
+Authorization tests additionally require failure without valid identity, refusal of caller-supplied tenant/borrower hints, cross-tenant and wrong-subject denial before any upstream call, and financial-write endpoints staying disabled. Production activation remains blocked pending real borrower-scoped LoanHub credentials, session gateway design, verified account linking, and security review.
