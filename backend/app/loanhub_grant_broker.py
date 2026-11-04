@@ -34,6 +34,7 @@ class BorrowerAccountEvidence:
     account_active: bool
     session_active: bool
     verified_at: datetime
+    token_expires_at: datetime
 
 
 class LoanHubBorrowerGrantBroker:
@@ -80,11 +81,11 @@ class LoanHubBorrowerGrantBroker:
                 return None
             # Token expiry must be verified by the trusted verifier before
             # it supplies evidence; do not parse client-provided expiry claims.
-            expiry = self._verify_expiry(token, tenant, borrower)
-            if expiry is None or expiry.tzinfo is None:
+            expiry = proof.token_expires_at
+            if not isinstance(expiry, datetime) or expiry.tzinfo is None:
                 return None
             expiry = expiry.astimezone(timezone.utc)
-            if expiry <= now or expiry > now.replace(year=now.year + 1):
+            if expiry <= now:
                 return None
             return VerifiedBorrowerGrant(
                 token=token, tenant_id=tenant, borrower_id=borrower,
@@ -95,12 +96,3 @@ class LoanHubBorrowerGrantBroker:
             # Secrets, HTTP and database errors are not customer-facing.
             return None
 
-    def _verify_expiry(
-        self, token: str, tenant_id: str, borrower_id: str
-    ) -> datetime | None:
-        """Overridden only by a trusted deployment subclass.
-
-        Disabled by default: prevents an unsigned token-claims shortcut from
-        accidentally becoming the production borrower credential broker.
-        """
-        return None
