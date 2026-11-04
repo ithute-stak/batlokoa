@@ -22,13 +22,13 @@ void main() {
     await tester.tap(find.text('Review transaction'));
     await tester.pumpAndSettle();
     expect(find.byType(DemoFormError), findsOneWidget);
-    expect(tester.widget<TextFormField>(reference).focusNode!.hasFocus, isTrue);
+    expect(tester.widget<TextField>(find.descendant(of:reference,matching:find.byType(TextField))).focusNode!.hasFocus, isTrue);
 
     await tester.enterText(reference, 'SAMPLE-ACCOUNT');
     await tester.ensureVisible(find.text('Review transaction'));
     await tester.tap(find.text('Review transaction'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextFormField>(amount).focusNode!.hasFocus, isTrue);
+    expect(tester.widget<TextField>(find.descendant(of:amount,matching:find.byType(TextField))).focusNode!.hasFocus, isTrue);
 
     await tester.enterText(amount, '125.50');
     await tester.pumpAndSettle();
@@ -55,13 +55,13 @@ void main() {
     await tester.tap(find.text('Review payment'));
     await tester.pumpAndSettle();
     expect(find.byType(DemoFormError), findsOneWidget);
-    expect(tester.widget<TextFormField>(reference).focusNode!.hasFocus, isTrue);
+    expect(tester.widget<TextField>(find.descendant(of:reference,matching:find.byType(TextField))).focusNode!.hasFocus, isTrue);
 
     await tester.enterText(reference, 'METER-DEMO-001');
     await tester.ensureVisible(find.text('Review payment'));
     await tester.tap(find.text('Review payment'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextFormField>(amount).focusNode!.hasFocus, isTrue);
+    expect(tester.widget<TextField>(find.descendant(of:amount,matching:find.byType(TextField))).focusNode!.hasFocus, isTrue);
     expect(find.text('Enter a positive amount up to M 1,000,000'), findsOneWidget);
 
     await tester.enterText(amount, '75.50');
@@ -87,7 +87,7 @@ void main() {
     await tester.tap(find.text('Review transaction'));
     await tester.pumpAndSettle();
     final amount = find.widgetWithText(TextFormField, 'Amount in LSL');
-    expect(tester.widget<TextFormField>(amount).focusNode!.hasFocus, isTrue);
+    expect(tester.widget<TextField>(find.descendant(of:amount,matching:find.byType(TextField))).focusNode!.hasFocus, isTrue);
     await tester.enterText(amount, '50.00');
     await tester.ensureVisible(find.text('Review transaction'));
     await tester.tap(find.text('Review transaction'));
