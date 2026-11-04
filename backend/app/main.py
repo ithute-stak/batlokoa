@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .customer_loans_api import router as customer_loans_router
+from .session_loan_reads import router as session_loan_reads_router
 from .auth_routes import router as auth_router
 from fastapi.responses import JSONResponse
 
@@ -60,6 +61,9 @@ async def financial_routes_disabled() -> JSONResponse:
 
 # Customer loan reads are opt-in, authenticated and default to HTTP 503.
 app.include_router(customer_loans_router)
+
+# Session-based loan access is separately opt-in; default remains HTTP 503.
+app.include_router(session_loan_reads_router)
 
 # Auth routes require trusted bootstrap config; default to 503, not demo login.
 app.include_router(auth_router)
