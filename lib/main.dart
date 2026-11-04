@@ -69,7 +69,18 @@ class _ShellState extends State<Shell> {
  Home(go:(v)=>setState(()=>tab=v),open:navigate),
  Loans(open:navigate),Wallet(open:navigate),Bills(open:navigate),
  Profile(open:navigate,exit:widget.exit)];
- return Scaffold(body:SafeArea(child:Row(children:[
+ return Scaffold(
+ floatingActionButton:tab==0?null:Semantics(
+   liveRegion:true,
+   label:'Current section: ${names[tab]}. Back to dashboard',
+   child:FloatingActionButton.extended(
+     key:const Key('back-to-dashboard'),
+     onPressed:()=>setState(()=>tab=0),
+     icon:const Icon(Icons.home_outlined),
+     label:const Text('Back to dashboard'),
+   ),
+ ),
+ body:SafeArea(child:Row(children:[
  if(wide)NavigationRail(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),
  extended:MediaQuery.sizeOf(context).width>1100,backgroundColor:Colors.white,
  leading:const Padding(padding:EdgeInsets.all(16),child:CircleAvatar(backgroundColor:teal,child:Icon(Icons.wallet,color:Colors.white))),
