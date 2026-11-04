@@ -24,7 +24,7 @@ from backend.app.link_store import PostgresCustomerLinkStore
 from backend.app.loan_reads import LoanReadService
 from backend.app.main import app
 from backend.app.session_loan_reads import SessionLoanReadConfig
-from backend.app.sessions import PostgresSessionStore
+from backend.app.sessions import PostgresSessionStore, SessionDenied
 
 URL = os.getenv("BATLOKOA_LINK_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="Disposable PostgreSQL URL not configured")
@@ -165,7 +165,7 @@ async def test_central_revocation_marker_blocks_stale_unrevoked_db_session(envir
     response = await get_loans(grant.session_token)
     assert response.status_code == 401
     assert stub.calls == [(str(TENANT), str(BORROWER))]
-    with pytest.raises(Exception):
+    with pytest.raises(SessionDenied):
         await sessions.issue(claims=claims(sid=sid), tenant_id=TENANT)
 
 
