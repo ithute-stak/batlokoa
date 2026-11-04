@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pydantic import ValidationError
 
 from .contracts import LoanHubAdapter, LoanSummary
-from .identity import CustomerDirectory, VerifiedClaims, resolve_customer
+from .identity import CustomerContext, CustomerDirectory, VerifiedClaims, resolve_customer
 
 
 class LoanReadUnavailable(Exception):
@@ -43,10 +43,23 @@ class LoanReadService:
             # Do not disclose whether a customer exists in another tenant.
             raise LoanReadForbidden("Customer access is not authorized")
 
+        return await self.list_for_resolved_session(context=customer)
+
+    async def list_for_resolved_session(self, *, context: CustomerContext) -> list[LoanSummary]:
+        """Only a trusted, database-resolved BFF session may supply context.
+
+        Never invoke this with caller-provided headers, query values or tokens.
+        """
+        if (not self.tenant_id or not 1 <= self.max_loans <= 1000 or
+                not isinstance(context, CustomerContext) or
+                context.tenant_id != self.tenant_id or
+                not context.customer_id or not context.auth_subject):
+            raise LoanReadForbidden("Customer access is not authorized")
+
         try:
             records = await self.adapter.list_customer_loans(
-                tenant_id=customer.tenant_id,
-                customer_id=customer.customer_id,
+                tenant_id=context.tenant_id,
+                customer_id=context.customer_id,
             )
             if not isinstance(records, list) or len(records) > self.max_loans:
                 raise LoanReadUnavailable("Loan service returned an invalid result")

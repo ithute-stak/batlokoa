@@ -192,3 +192,12 @@ The Batlokoa backend currently exposes the **disabled-by-default** customer-loan
 **Authentication gap:** The existing gateway loan route requires an RS256-verified bearer token and backend-owned tenant/customer lookup. The Flutter contract-test adapter deliberately does not hold bearer credentials. Thus, enabling only its opt-in flag is insufficient: requests will be denied unless a separately approved and tested same-origin customer-session BFF contract is implemented. Do **not** insert service credentials or customer/tenant IDs in Flutter to bypass that gap.
 
 Authorization tests additionally require failure without valid identity, refusal of caller-supplied tenant/borrower hints, cross-tenant and wrong-subject denial before any upstream call, and financial-write endpoints staying disabled. Production activation remains blocked pending real borrower-scoped LoanHub credentials, session gateway design, verified account linking, and security review.
+
+
+## Phase 36 — opt-in browser-session customer-loan read boundary
+
+The backend now includes a separate `GET /api/v1/me/loans/session` endpoint which is **HTTP 503 by default**. It is deliberately not wired to Flutter and does not activate OIDC or LoanHub.
+
+After a separately reviewed bootstrap explicitly installs `SessionLoanReadConfig`, the endpoint checks same-origin browser fetch metadata, an opaque `__Host-batlokoa_session` cookie, and a server-resolved, non-revoked customer account link. The configured tenant must match that trusted session's tenant; borrower IDs and tenant headers/query parameters never decide access. A read-only LoanHub adapter would then supply data and must use an approved borrower-scoped backend credential, never an administrator token or Flutter token. Invalid records, missing sessions and service failures fail closed, with no demo-balance substitution.
+
+The existing signed-bearer `GET /api/v1/me/loans` path is unchanged. Flutter's Phase 35 adapter is still disabled by default and is **not** yet wired to this new cookie-session route. A future phase must select one approved browser contract, verify actual identity-provider registration and token/session revocation, integrate a real borrower-specific backend credential broker, and perform audited end-to-end tests with separate tenant identities. The same-origin fetch-header policy is intentionally restrictive and requires browser-compatibility checks before any activation. All financial writes and IthutePay remain disabled.
