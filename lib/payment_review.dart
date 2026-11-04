@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// An explicitly non-transactional review page. The final button never sends a request.
-class DemoPaymentReview extends StatelessWidget {
+class DemoPaymentReview extends StatefulWidget {
   final String title;
   final String amount;
   final String reference;
@@ -14,6 +14,37 @@ class DemoPaymentReview extends StatelessWidget {
     required this.reference,
     required this.method,
   });
+
+  @override
+  State<DemoPaymentReview> createState() => _DemoPaymentReviewState();
+}
+
+class _DemoPaymentReviewState extends State<DemoPaymentReview> {
+  bool _confirmationOpen = false;
+
+  Future<void> _previewConfirmation() async {
+    if (_confirmationOpen) return;
+    setState(() => _confirmationOpen = true);
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Demo complete'),
+          content: const Text(
+            'This is a visual preview. No transaction was made and no receipt was issued.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _confirmationOpen = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -52,10 +83,10 @@ class DemoPaymentReview extends StatelessWidget {
                         ),
                       ),
                       const Divider(height: 36),
-                      _line('Service', title),
-                      _line('Amount', 'M ' + amount),
-                      _line('Reference', reference.isEmpty ? '—' : reference),
-                      _line('Payment method', method),
+                      _line('Service', widget.title),
+                      _line('Amount', 'M ' + widget.amount),
+                      _line('Reference', widget.reference.isEmpty ? '—' : widget.reference),
+                      _line('Payment method', widget.method),
                       _line('Provider fees', 'Not available in demo'),
                       const SizedBox(height: 18),
                       const Text(
@@ -64,21 +95,7 @@ class DemoPaymentReview extends StatelessWidget {
                       ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
-                        onPressed: () => showDialog<void>(
-                          context: context,
-                          builder: (dialogContext) => AlertDialog(
-                            title: const Text('Demo complete'),
-                            content: const Text(
-                              'This is a visual preview. No transaction was made and no receipt was issued.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialogContext),
-                                child: const Text('Close'),
-                              ),
-                            ],
-                          ),
-                        ),
+                        onPressed: _confirmationOpen ? null : _previewConfirmation,
                         icon: const Icon(Icons.visibility_outlined),
                         label: const Text('Preview confirmation'),
                       ),
@@ -86,6 +103,12 @@ class DemoPaymentReview extends StatelessWidget {
                       OutlinedButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Edit details'),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Editing returns to your unsent form. Confirming this preview never authorises a payment.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
                       ),
                     ],
                   ),
