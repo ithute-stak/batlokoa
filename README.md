@@ -210,3 +210,10 @@ Every PostgreSQL customer-session resolution now checks the central session-revo
 The existing backend-only LoanHub read adapter now converts credential-broker errors into a generic `LoanHubReadError` and makes no upstream request when the broker fails or reports no borrower credential. Mocked tests verify that credentials are requested separately for the exact tenant/borrower mapping, borrower revocation prevents subsequent reads, and internal broker error strings are not surfaced as user-facing messages. These tests do **not** prove the real credential issuer's scopes or revocation latency; external integration must still validate those properties.
 
 Staging smoke tests now explicitly require `/api/v1/me/loans/session` to stay HTTP 503 in the unconfigured deployment. Production OIDC, borrower-token provisioning, authorization and reconciliation are not activated. Real LoanHub customer data and IthutePay remain disabled.
+
+
+## Phase 38 — PostgreSQL-backed session-to-loan HTTP integration tests
+
+`backend/tests/test_phase38_session_route_postgres.py` exercises the actual FastAPI session-loan route and actual PostgreSQL `PostgresSessionStore` and `PostgresCustomerLinkStore` in a disposable isolated schema. The suite verifies that the trusted session's linked borrower and tenant are used; HTTP-origin, customer and tenant spoofing fail or cannot alter authorization; individual logout, central revocation records, and account unlinking stop subsequent loan reads; and upstream exceptions never produce fake balances or leak internal errors.
+
+The CI `postgres-link-store` job runs this test file against its ephemeral PostgreSQL 16 service alongside the existing migration and account-link tests. Only a deterministic fake LoanHub adapter is used. Passing does **not** mean production LoanHub credentials, token expiry, external revocation events, IdP login, or actual borrower data are connected. The session loan API remains **disabled by default**, and IthutePay and all financial writes stay disabled.
