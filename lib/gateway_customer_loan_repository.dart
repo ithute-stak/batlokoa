@@ -7,8 +7,8 @@ import 'customer_loan_data.dart';
 
 /// Opt-in contract test adapter for a future Batlokoa customer gateway.
 ///
-/// This is NOT a direct LoanHub client. The endpoint path is provisional until
-/// verified against the actual gateway. Do not wire this into the default UI
+/// This is NOT a direct LoanHub client. The read route is aligned with the repository gateway contract, but
+/// production browser-session authentication remains unverified. Do not wire this into the default UI
 /// without separately approved, server-enforced borrower authorization.
 class GatewayCustomerLoanRepository implements CustomerLoanRepository {
   final Uri origin;
@@ -28,8 +28,8 @@ class GatewayCustomerLoanRepository implements CustomerLoanRepository {
         (origin.path.isNotEmpty && origin.path != '/') ||
         origin.hasQuery ||
         origin.hasFragment ||
-        approvedPath != '/api/v1/customer/loans') {
-      throw ArgumentError('A reviewed HTTPS gateway origin and route are required');
+        approvedPath != '/api/v1/me/loans') {
+      throw ArgumentError('A trusted HTTPS gateway origin and matching route are required');
     }
   }
 
