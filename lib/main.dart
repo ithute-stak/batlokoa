@@ -75,7 +75,26 @@ class _ShellState extends State<Shell> {
  leading:const Padding(padding:EdgeInsets.all(16),child:CircleAvatar(backgroundColor:teal,child:Icon(Icons.wallet,color:Colors.white))),
  destinations:[for(int i=0;i<names.length;i++)NavigationRailDestination(icon:Icon(icons[i]),label:Text(names[i]))]),
  Expanded(child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:1100),
- child:IndexedStack(index:tab,children:pages)))),
+ child:Column(children:[
+ if(tab!=0) Padding(
+   padding:const EdgeInsets.fromLTRB(16,8,16,0),
+   child:Row(children:[
+     Expanded(child:Semantics(
+       liveRegion:true,
+       label:'Current section: ${names[tab]}',
+       child:Text('Current section: ${names[tab]}',
+         style:const TextStyle(fontWeight:FontWeight.w600)),
+     )),
+     TextButton.icon(
+       key:const Key('back-to-dashboard'),
+       onPressed:()=>setState(()=>tab=0),
+       icon:const Icon(Icons.home_outlined),
+       label:const Text('Back to dashboard'),
+     ),
+   ]),
+ ),
+ Expanded(child:IndexedStack(index:tab,children:pages)),
+ ])))),
  ])),bottomNavigationBar:wide?null:NavigationBar(selectedIndex:tab,
  onDestinationSelected:(v)=>setState(()=>tab=v),destinations:[
  for(int i=0;i<names.length;i++)NavigationDestination(icon:Icon(icons[i]),label:names[i])]));}
