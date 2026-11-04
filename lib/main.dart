@@ -269,7 +269,7 @@ class _ApplyLoanState extends State<ApplyLoan>{
  const SizedBox(height:24),
  if(step>0)TextButton(onPressed:()=>setState(()=>step--),child:const Text('Back')),
  ActionButton(step==2?'Preview application':'Continue',(){
- if(step==1 && (incomeSource.text.trim().isEmpty || (double.tryParse(income.text.trim())??0)<=0)){
+ if(step==1 && (DemoInputValidator.incomeSource(incomeSource.text)!=null || DemoInputValidator.monthlyIncome(income.text)!=null)){
  setState(()=>formError='Enter your income source and a valid monthly income.');
  return;
  }
