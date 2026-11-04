@@ -14,18 +14,10 @@ class DemoInputValidator {
     return null;
   }
 
-  /// Client-side plausibility check only; LoanHub must independently verify
-  /// affordability and make all lending decisions.
+  /// UI plausibility check only. LoanHub must verify actual affordability.
   static String? monthlyIncome(String? raw) {
     final value = raw?.trim() ?? '';
-    if (!RegExp(r'^\\d+(?:\\.\\d{1,2})?
-    final value = raw?.trim() ?? '';
-    if (value.isEmpty) return 'Reference is required';
-    if (value.length > 120) return 'Reference is too long';
-    return null;
-  }
-}
-).hasMatch(value)) {
+    if (!RegExp(r'^\d+(?:\.\d{1,2})?$').hasMatch(value)) {
       return 'Enter a monthly income with at most 2 decimal places';
     }
     final amount = double.tryParse(value);
