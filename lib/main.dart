@@ -231,9 +231,10 @@ class LoanDetails extends StatelessWidget{
 }
 class ApplyLoan extends StatefulWidget{const ApplyLoan({super.key});@override State<ApplyLoan> createState()=>_ApplyLoanState();}
 class _ApplyLoanState extends State<ApplyLoan>{
- int step=0,months=6;double amount=5000;String purpose='Personal';String? formError;final income=TextEditingController();
+ int step=0,months=6;double amount=5000;String purpose='Personal';String? formError;bool showFieldErrors=false;final income=TextEditingController();
+ final incomeFocus=FocusNode(),incomeSourceFocus=FocusNode();
  final incomeSource=TextEditingController();
- @override void dispose(){income.dispose();incomeSource.dispose();super.dispose();}
+ @override void dispose(){income.dispose();incomeSource.dispose();incomeFocus.dispose();incomeSourceFocus.dispose();super.dispose();}
  bool get hasDraft=>step>0 || amount!=5000 || months!=6 || purpose!='Personal' || income.text.isNotEmpty || incomeSource.text.isNotEmpty;
  @override Widget build(BuildContext context)=>DemoDraftGuard(hasDraft:hasDraft,child:Subpage(title:'Apply for a loan',child:CardBox(child:Column(
  crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -252,9 +253,9 @@ class _ApplyLoanState extends State<ApplyLoan>{
  onChanged:(v)=>setState(()=>purpose=v??purpose)),
  ]else if(step==1)...[
  const Text('Affordability details',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
- const SizedBox(height:14),TextField(controller:incomeSource,onChanged:(_)=>setState(()=>formError=null),textInputAction:TextInputAction.next,decoration:const InputDecoration(labelText:'Employment / income source')),
- const SizedBox(height:12),TextField(controller:income,onChanged:(_)=>setState(()=>formError=null),keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,
- decoration:const InputDecoration(labelText:'Monthly income in LSL')),
+ const SizedBox(height:14),TextField(controller:incomeSource,focusNode:incomeSourceFocus,onChanged:(_)=>setState(()=>formError=null),textInputAction:TextInputAction.next,onSubmitted:(_)=>incomeFocus.requestFocus(),decoration:InputDecoration(labelText:'Employment / income source',errorText:showFieldErrors?DemoInputValidator.incomeSource(incomeSource.text):null)),
+ const SizedBox(height:12),TextField(controller:income,focusNode:incomeFocus,onChanged:(_)=>setState(()=>formError=null),keyboardType:const TextInputType.numberWithOptions(decimal:true),textInputAction:TextInputAction.done,
+ decoration:InputDecoration(labelText:'Monthly income in LSL',errorText:showFieldErrors?DemoInputValidator.monthlyIncome(income.text):null)),
  ]else...[
  const Text('Review your request',style:TextStyle(fontSize:21,fontWeight:FontWeight.bold)),
  const SizedBox(height:16),Detail('Amount','M '+amount.toStringAsFixed(2)),
@@ -269,11 +270,16 @@ class _ApplyLoanState extends State<ApplyLoan>{
  const SizedBox(height:24),
  if(step>0)TextButton(onPressed:()=>setState(()=>step--),child:const Text('Back')),
  ActionButton(step==2?'Preview application':'Continue',(){
- if(step==1 && (DemoInputValidator.incomeSource(incomeSource.text)!=null || DemoInputValidator.monthlyIncome(income.text)!=null)){
- setState(()=>formError='Enter your income source and a valid monthly income.');
+ if(step==1){
+ final sourceError=DemoInputValidator.incomeSource(incomeSource.text);
+ final incomeError=DemoInputValidator.monthlyIncome(income.text);
+ if(sourceError!=null || incomeError!=null){
+ setState((){showFieldErrors=true;formError='Enter your income source and a valid monthly income.';});
+ (sourceError!=null?incomeSourceFocus:incomeFocus).requestFocus();
  return;
  }
- if(step<2){setState((){formError=null;step++;});}else{demo(context,'Loan application');}
+ }
+ if(step<2){setState((){formError=null;showFieldErrors=false;step++;});}else{demo(context,'Loan application');}
  }),
   ]))));
 }
