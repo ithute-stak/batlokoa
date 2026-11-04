@@ -38,7 +38,10 @@ class IntegrationPreflight:
 def _https_origin(value: str) -> bool:
     if not isinstance(value, str):
         return False
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
     return (
         parsed.scheme == "https"
         and parsed.hostname is not None
