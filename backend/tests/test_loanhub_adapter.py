@@ -146,3 +146,90 @@ async def test_json_float_precision_kept_without_binary_rounding():
     finally:
         await client.aclose()
     assert rows[0].outstanding.minor_units == 29
+
+
+@pytest.mark.asyncio
+async def test_borrower_credential_broker_is_called_with_exact_verified_mapping():
+    second_borrower = "9ff995dc-ad87-4a91-8a8f-18ddfc85d991"
+    issued = {
+        (COMPANY, BORROWER): "token-for-first-borrower",
+        (COMPANY, second_borrower): "token-for-second-borrower",
+    }
+    calls, requests = [], []
+
+    def grant(tenant, borrower):
+        calls.append((tenant, borrower))
+        return issued.get((tenant, borrower))
+
+    def handler(request):
+        requests.append(request)
+        if request.headers["authorization"] == "Bearer token-for-first-borrower":
+            return httpx.Response(200, json=[record()])
+        return httpx.Response(200, json=[record(
+            borrower_id=second_borrower,
+            id="9ff995dc-ad87-4a91-8a8f-18ddfc85d992",
+        )])
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    service = LoanHubBorrowerReadAdapter(
+        base_url="https://loanhub.example.test",
+        borrower_token_for=grant,
+        client=client,
+    )
+    try:
+        first = await service.list_customer_loans(
+            tenant_id=COMPANY, customer_id=BORROWER)
+        second = await service.list_customer_loans(
+            tenant_id=COMPANY, customer_id=second_borrower)
+    finally:
+        await client.aclose()
+    assert len(first) == len(second) == 1
+    assert calls == [(COMPANY, BORROWER), (COMPANY, second_borrower)]
+    assert [r.headers["authorization"] for r in requests] == [
+        "Bearer token-for-first-borrower",
+        "Bearer token-for-second-borrower",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_revoked_borrower_credential_never_calls_loanhub():
+    outgoing = []
+    grants = {(COMPANY, BORROWER): "active-borrower-token"}
+    client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: outgoing.append(request) or httpx.Response(200, json=[])))
+    service = LoanHubBorrowerReadAdapter(
+        base_url="https://loanhub.example.test",
+        borrower_token_for=lambda tenant, borrower: grants.get((tenant, borrower)),
+        client=client,
+    )
+    try:
+        assert await service.list_customer_loans(
+            tenant_id=COMPANY, customer_id=BORROWER) == []
+        del grants[(COMPANY, BORROWER)]
+        with pytest.raises(LoanHubReadError):
+            await service.list_customer_loans(
+                tenant_id=COMPANY, customer_id=BORROWER)
+    finally:
+        await client.aclose()
+    assert len(outgoing) == 1
+
+
+@pytest.mark.asyncio
+async def test_credential_broker_failure_is_sanitized_and_never_calls_upstream():
+    outgoing = []
+    def broken_broker(_tenant, _borrower):
+        raise RuntimeError("internal-credential-store-secret")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda req: outgoing.append(req) or httpx.Response(200, json=[])))
+    service = LoanHubBorrowerReadAdapter(
+        base_url="https://loanhub.example.test",
+        borrower_token_for=broken_broker, client=client)
+    try:
+        with pytest.raises(LoanHubReadError) as exc:
+            await service.list_customer_loans(
+                tenant_id=COMPANY, customer_id=BORROWER)
+        assert "internal-credential-store-secret" not in str(exc.value)
+    finally:
+        await client.aclose()
+    assert outgoing == []

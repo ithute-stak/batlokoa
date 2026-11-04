@@ -21,7 +21,7 @@ curl --silent --fail --max-time 5 "${WEB}/healthz" | grep -qx ok
 capabilities="$(curl --silent --fail --max-time 5 "${API}/api/v1/capabilities")"
 python -c 'import json,sys; c=json.loads(sys.argv[1]); assert c["mode"]=="integration_disabled"; assert c["capabilities"] and not any(c["capabilities"].values())' "$capabilities"
 
-for route in /api/v1/auth/login /api/v1/auth/session /api/v1/me/loans /api/v1/me/wallet; do
+for route in /api/v1/auth/login /api/v1/auth/session /api/v1/me/loans /api/v1/me/loans/session /api/v1/me/wallet; do
   status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "${API}${route}")"
   test "$status" = 503 || { echo "${route} unexpectedly returned ${status}" >&2; exit 1; }
 done

@@ -103,7 +103,12 @@ class LoanHubBorrowerReadAdapter:
         except (TypeError, ValueError) as exc:
             raise LoanHubReadError("Invalid mapped LoanHub identity") from exc
 
-        token = self._token_for(str(company_uuid), str(borrower_uuid))
+        # Credential resolution must be backend-owned and borrower-specific.
+        # A revoked/expired/absent grant must return None without HTTP access.
+        try:
+            token = self._token_for(str(company_uuid), str(borrower_uuid))
+        except Exception as exc:
+            raise LoanHubReadError("Borrower credential is unavailable") from exc
         if not token or not isinstance(token, str) or len(token) > 8192 or any(ch.isspace() for ch in token):
             raise LoanHubReadError("No approved borrower-scoped LoanHub session")
 
