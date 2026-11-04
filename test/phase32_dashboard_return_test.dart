@@ -19,7 +19,7 @@ void main() {
     expect(find.byKey(const Key('back-to-dashboard')), findsNothing);
     await tester.tap(find.text('Pay bills').last);
     await tester.pumpAndSettle();
-    expect(find.text('Current section: Pay bills'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == 'Current section: Pay bills. Back to dashboard'), findsOneWidget);
     expect(find.byKey(const Key('back-to-dashboard')), findsOneWidget);
     expect(find.text('Choose a service'), findsOneWidget);
     await tester.tap(find.byKey(const Key('back-to-dashboard')));
@@ -35,7 +35,7 @@ void main() {
     expect(find.byType(NavigationRail), findsOneWidget);
     await tester.tap(find.text('Wallet').last);
     await tester.pumpAndSettle();
-    expect(find.text('Current section: Wallet'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == 'Current section: Wallet. Back to dashboard'), findsOneWidget);
     expect(find.byKey(const Key('back-to-dashboard')), findsOneWidget);
     await tester.tap(find.byKey(const Key('back-to-dashboard')));
     await tester.pumpAndSettle();
@@ -51,7 +51,7 @@ void main() {
     expect(
       find.byWidgetPredicate((widget) => widget is Semantics &&
           widget.properties.liveRegion == true &&
-          widget.properties.label == 'Current section: Loans'),
+          widget.properties.label == 'Current section: Loans. Back to dashboard'),
       findsOneWidget,
     );
   });
