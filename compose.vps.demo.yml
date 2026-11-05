@@ -6,6 +6,7 @@ services:
   batlokoa-web:
     image: ghcr.io/ithute-stak/batlokoa-web:demo-${BATLOKOA_RELEASE_SHA:?Set verified published image commit SHA}
     restart: unless-stopped
+    user: "101:101"
     read_only: true
     cap_drop: [ALL]
     security_opt:
@@ -13,9 +14,9 @@ services:
     ports:
       - "127.0.0.1:${BATLOKOA_WEB_PORT:-18088}:8080"
     tmpfs:
-      - /var/cache/nginx
-      - /var/run
-      - /tmp
+      - /var/cache/nginx:uid=101,gid=101
+      - /var/run:uid=101,gid=101
+      - /tmp:uid=101,gid=101
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
       interval: 30s
