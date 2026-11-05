@@ -8,7 +8,6 @@ session-to-link binding, distributed revocation and security approval.
 """
 from __future__ import annotations
 
-import hmac
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -104,8 +103,8 @@ class EphemeralBorrowerTokenVault:
             borrower = _uuid(borrower_id)
             if not isinstance(central_sid, UUID) or not self._token_ok(token):
                 return False
-            now = datetime.now(timezone.utc)
             proof = self._verify(token, tenant, borrower)
+            now = datetime.now(timezone.utc)
             if not self._trusted_proof(proof, tenant, borrower, now):
                 return False
             expires = min(
