@@ -267,3 +267,30 @@ Passing the preflight is **not** a security review or authority to activate anyt
 The harness proves the expected call chain and checks that administrative roles, inactive/unverified users, centrally revoked mock sessions, token expiry, cross-tenant or cross-borrower mappings, unexpected loan response identities and upstream outages fail closed. A successful read is never treated as a cached or fabricated balance after permission loss. The GitHub gateway contract job runs these tests on pull requests.
 
 This is **contract simulation**, not certification against a deployed LoanHub server: the fake authority is not the actual LoanHub authentication/DB implementation. The controlled real-system test environment, audited vault and SELECT-only borrower mapping credentials, pinned public key, operator approvals and verified revocation behavior are still required before a separate approved bootstrap can enable customer access. Live LoanHub access and IthutePay transactions remain disabled by default.
+
+
+## Phase 45 — LoanHub-owned borrower identity proof (not activated)
+
+The authenticated LoanHub endpoint proposed in `ithute-stak/LoanHub` PR #583
+is `GET /api/v1/auth/borrower-context?company_id=<uuid>`. Its implementation
+is in LoanHub itself, requiring a locally issued, revocable borrower session,
+a currently active verified account, and a real loan relationship between the
+borrower profile and the requested, active LoanHub company.
+
+Batlokoa's `LoanHubRemoteBorrowerContext` sends the already verified
+borrower access token to the HTTPS LoanHub origin and checks the exact
+`user_id`, `company_id`, `borrower_id`, borrower role, session state
+and account state from the response. The
+`LoanHubIdentityVerifier` supports this **instead of** the old direct
+PostgreSQL mapping callback, not alongside it; missing or ambiguous
+configuration is rejected. Network redirects, errors, invalid payloads and
+wrong-tenant mapping all fail closed. The original DB resolver is kept only
+for backwards-compatible offline tests and remains unprovisioned.
+
+**This is a contract implementation, not a live financial launch.** LoanHub
+PR #583 needs green CI, merge, an explicitly reviewed LoanHub deployment,
+and proof of real session revocation and company ownership. Batlokoa's
+existing public demo must not be wired to customer credentials before
+these steps, a secure token vault, security authorization and real-system
+acceptance testing. No production keys, tokens, database credentials or
+payment rails have been enabled by this code.
