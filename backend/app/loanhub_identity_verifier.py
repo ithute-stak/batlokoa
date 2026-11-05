@@ -21,6 +21,7 @@ from .loanhub_grant_broker import BorrowerAccountEvidence
 # Map a verified local LoanHub user UUID to the borrower profile and company
 # using a trusted backend data source, never headers, caller parameters or /me.
 BorrowerMappingResolver = Callable[[str], tuple[str, str] | None]
+RemoteBorrowerContextResolver = Callable[[str, str, str], tuple[str, str] | None]
 
 
 class LoanHubIdentityVerifier:
@@ -35,7 +36,8 @@ class LoanHubIdentityVerifier:
         *,
         base_url: str,
         public_key: object,
-        resolve_borrower_mapping: BorrowerMappingResolver,
+        resolve_borrower_mapping: BorrowerMappingResolver | None = None,
+        resolve_remote_borrower_context: RemoteBorrowerContextResolver | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         origin = urlsplit(base_url)
@@ -43,11 +45,13 @@ class LoanHubIdentityVerifier:
                 origin.path not in ("", "/") or origin.query or origin.fragment or
                 origin.username or origin.password):
             raise ValueError("LoanHub verification origin must be HTTPS")
-        if public_key is None or not callable(resolve_borrower_mapping):
-            raise ValueError("Trusted LoanHub key and borrower resolver are required")
+        if (public_key is None or
+                (callable(resolve_borrower_mapping) == callable(resolve_remote_borrower_context))):
+            raise ValueError("Trusted LoanHub key and exactly one mapping source required")
         self._origin = base_url.rstrip("/")
         self._public_key = public_key
         self._resolve_mapping = resolve_borrower_mapping
+        self._resolve_remote_context = resolve_remote_borrower_context
         self._client = client
 
     def __call__(
@@ -112,7 +116,11 @@ class LoanHubIdentityVerifier:
 
             # /auth/me does not expose borrower_profile.id. Therefore do not
             # infer it from user.id, token claims, email, phone or query args.
-            mapping = self._resolve_mapping(user_id)
+            mapping = (
+                self._resolve_remote_context(token, user_id, tenant)
+                if self._resolve_remote_context is not None
+                else self._resolve_mapping(user_id)
+            )
             if (not isinstance(mapping, tuple) or len(mapping) != 2 or
                     str(UUID(str(mapping[0]))) != tenant or
                     str(UUID(str(mapping[1]))) != borrower):
