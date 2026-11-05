@@ -1,0 +1,34 @@
+# Exact verified Batlokoa demo Caddy route deployed 2026-11-05.
+# Loaded by existing ithute-caddy-1 via /data/product-routes/*.caddy.
+# Financial operations are disabled; display data is illustrative.
+batlokoa.co.ls {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+        }
+    }
+    encode zstd gzip
+    header X-Batlokoa-Mode "demo"
+    header X-Content-Type-Options "nosniff"
+    header X-Frame-Options "DENY"
+    header Referrer-Policy "no-referrer"
+    header X-Robots-Tag "noindex, nofollow"
+
+    @api path /api/* /healthz
+    handle @api {
+        header Cache-Control "no-store"
+        reverse_proxy batlokoa-demo-batlokoa-gateway-1:8000
+    }
+    handle {
+        reverse_proxy batlokoa-demo-batlokoa-web-1:8080
+    }
+}
+
+www.batlokoa.co.ls {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+        }
+    }
+    redir https://batlokoa.co.ls{uri} permanent
+}
