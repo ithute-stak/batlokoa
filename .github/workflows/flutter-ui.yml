@@ -115,6 +115,7 @@ jobs:
         run: |
           docker compose -f compose.vps.demo.yml config --quiet
           test "$(docker compose -f compose.vps.demo.yml config --images | wc -l)" -eq 2
+          docker compose -f compose.vps.demo.yml config --format json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["networks"]["public-edge"]["external"] is True; assert all("public-edge" in d["services"][n]["networks"] for n in ("batlokoa-web","batlokoa-gateway"))'
           docker compose -f compose.vps.demo.yml config --format json | python3 -c 'import sys,json; w=json.load(sys.stdin)["services"]["batlokoa-web"]; assert w["user"]=="101:101"; assert w["read_only"] is True; assert "ALL" in w["cap_drop"]; assert any("uid=101" in x for x in w["tmpfs"])' 
 
       - name: Compose disabled staging stack and smoke-test safe defaults
