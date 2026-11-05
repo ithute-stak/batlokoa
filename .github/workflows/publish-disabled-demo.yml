@@ -2,6 +2,10 @@ name: Publish Batlokoa disabled-demo Docker images
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-disabled-demo.yml'
 
 permissions:
   contents: read
