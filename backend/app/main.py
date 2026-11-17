@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from .customer_loans_api import router as customer_loans_router
 from .session_loan_reads import router as session_loan_reads_router
 from .auth_routes import router as auth_router
+from .staff_login_routes import router as staff_login_router
 from fastapi.responses import JSONResponse
 
 app = FastAPI(
@@ -67,3 +68,6 @@ app.include_router(session_loan_reads_router)
 
 # Auth routes require trusted bootstrap config; default to 503, not demo login.
 app.include_router(auth_router)
+
+# Staging staff login is opt-in. Unconfigured routes return 503.
+app.include_router(staff_login_router)
