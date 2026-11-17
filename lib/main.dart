@@ -10,6 +10,7 @@ import 'activity_history.dart';
 import 'input_validators.dart';
 import 'customer_loans_screen.dart';
 import 'customer_session_screen.dart';
+import 'staff_portal.dart';
 
 void main() => runApp(const BatlokoaApp());
 // Legacy aliases preserve the existing demo presentation while shared tokens
@@ -54,6 +55,7 @@ class _EntryState extends State<Entry>{
  TextButton(onPressed:()=>setState(()=>login=!login),child:Text(login?'Create an account':'Already have an account?')),
  TextButton(onPressed:()=>setState(()=>entered=true),child:const Text('Explore demo')),
  TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>const CustomerSessionScreen())),child:const Text('Secure sign-in status')),
+ TextButton.icon(key:const Key('open-employee-portal'),onPressed:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>const StaffPortal())),icon:const Icon(Icons.badge_outlined),label:const Text('Employee portal')),
  ])),const SizedBox(height:14),
  const DemoNotice(message:'This is a design preview. Entered credentials are not submitted or verified. No real authentication or money transfers.'),
  ]))))));
