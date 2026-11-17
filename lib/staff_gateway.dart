@@ -57,7 +57,10 @@ class DisabledStaffGateway implements StaffGateway {
 class SameOriginStaffGateway implements StaffGateway {
   final http.Client client;
   final Uri origin;
-  SameOriginStaffGateway({required this.client, required this.origin}) {
+  final String? Function()? csrfToken;
+  final bool browserManagedOrigin;
+  SameOriginStaffGateway({required this.client, required this.origin,
+      this.csrfToken, this.browserManagedOrigin = false}) {
     if (origin.scheme != 'https' || origin.host.isEmpty ||
         origin.path.isNotEmpty || origin.hasQuery ||
         origin.hasFragment || origin.userInfo.isNotEmpty) {
@@ -82,7 +85,7 @@ class SameOriginStaffGateway implements StaffGateway {
     final res = await client.post(_url('/api/v1/staff/login'),
         headers: {'Content-Type': 'application/json',
                   'Accept': 'application/json',
-                  'Origin': origin.toString()},
+                  if (!browserManagedOrigin) 'Origin': origin.toString()},
         body: jsonEncode({'phone': phone, 'password': password}));
     if (res.statusCode != 200) throw StateError('Employee sign-in was denied');
     // Login response is not sufficient authorization: revalidate via session.
@@ -93,8 +96,22 @@ class SameOriginStaffGateway implements StaffGateway {
 
   @override
   Future<void> logout() async {
-    // Never pretend an insecure or unauthenticated logout succeeded. A native
-    // and web CSRF-aware BFF adapter is required for this state-changing call.
-    throw StateError('Secure employee sign-out is not yet connected');
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure employee sign-out requires CSRF proof');
+    }
+    final res = await client.post(_url('/api/v1/staff/logout'),
+        headers: {
+          'Accept': 'application/json',
+          'x-csrf-token': csrf,
+          if (!browserManagedOrigin) 'Origin': origin.toString(),
+        });
+    if (res.statusCode != 200) {
+      throw StateError('Employee sign-out failed');
+    }
+    final body = jsonDecode(res.body);
+    if (body is! Map<String, dynamic> || body['logged_out'] != true) {
+      throw StateError('Employee sign-out was not confirmed');
+    }
   }
 }
