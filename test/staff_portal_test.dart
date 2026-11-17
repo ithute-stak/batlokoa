@@ -1,0 +1,50 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:batlokoa/staff_gateway.dart';
+import 'package:batlokoa/staff_portal.dart';
+
+class FakeStaffGateway implements StaffGateway {
+  StaffSession? current;
+  bool allowLogin;
+  FakeStaffGateway({this.current, this.allowLogin = true});
+  @override Future<StaffSession?> session() async => current;
+  @override Future<StaffSession> login(String phone, String password) async {
+    if (!allowLogin) throw StateError('Denied');
+    return current = const StaffSession(
+        role: 'LOAN_OFFICER', companyId: 'verified-company',
+        branchIds: ['verified-branch'], companyWide: false);
+  }
+  @override Future<void> logout() async { current = null; }
+}
+
+void main() {
+  testWidgets('staff login uses actual gateway and shows verified branch',
+      (tester) async {
+    final gateway = FakeStaffGateway();
+    await tester.pumpWidget(MaterialApp(home: StaffPortal(gateway: gateway)));
+    await tester.pumpAndSettle();
+    expect(find.text('Employee sign in'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('staff-phone')), '59000000');
+    await tester.enterText(find.byKey(const Key('staff-password')), 'secretpass');
+    await tester.tap(find.byKey(const Key('staff-login')));
+    await tester.pumpAndSettle();
+    expect(find.text('Employee workspace'), findsOneWidget);
+    expect(find.text('Branch ID: verified-branch'), findsOneWidget);
+    expect(find.text('Register client'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('staff-logout')));
+    await tester.pumpAndSettle();
+    expect(find.text('Employee sign in'), findsOneWidget);
+  });
+
+  testWidgets('disabled gateway cannot fake employee login', (tester) async {
+    await tester.pumpWidget(
+        const MaterialApp(home: StaffPortal()));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('staff-phone')), '59000000');
+    await tester.enterText(find.byKey(const Key('staff-password')), 'secretpass');
+    await tester.tap(find.byKey(const Key('staff-login')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('staff-error')), findsOneWidget);
+    expect(find.text('Employee workspace'), findsNothing);
+  });
+}
