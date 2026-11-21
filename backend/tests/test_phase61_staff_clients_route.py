@@ -97,7 +97,7 @@ def test_verified_session_can_read_only_minimal_branch_scoped_fields():
     }
     client, cookie, calls, upstream = enabled(records=[record])
     try:
-        client.cookies.set(COOKIE, cookie, secure=True)
+        client.cookies.set(COOKIE, cookie)
         response = client.get("/api/v1/staff/clients?search=Synthetic")
         assert response.status_code == 200
         assert response.json() == {"clients": [{
@@ -120,7 +120,7 @@ def test_verified_session_can_read_only_minimal_branch_scoped_fields():
 def test_cross_branch_and_upstream_scope_mismatch_fail_closed():
     client, cookie, calls, upstream = enabled()
     try:
-        client.cookies.set(COOKIE, cookie, secure=True)
+        client.cookies.set(COOKIE, cookie)
         forbidden = client.get(
             "/api/v1/staff/clients", params={"branch_id": str(DIFFERENT_BRANCH)},
         )
@@ -136,7 +136,7 @@ def test_cross_branch_and_upstream_scope_mismatch_fail_closed():
     }
     client, cookie, calls, upstream = enabled(records=[record])
     try:
-        client.cookies.set(COOKIE, cookie, secure=True)
+        client.cookies.set(COOKIE, cookie)
         assert client.get("/api/v1/staff/clients").status_code == 503
         assert len(calls) == 1
     finally:
@@ -149,7 +149,7 @@ def test_rejected_upstream_request_and_bad_query_never_expose_client_details():
         upstream_status=403,
     )
     try:
-        client.cookies.set(COOKIE, cookie, secure=True)
+        client.cookies.set(COOKIE, cookie)
         response = client.get("/api/v1/staff/clients")
         assert response.status_code == 503
         assert "Sensitive upstream response" not in response.text
