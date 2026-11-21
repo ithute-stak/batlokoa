@@ -14,6 +14,7 @@ from .auth_routes import router as auth_router
 from .staff_login_routes import router as staff_login_router
 from .staff_clients_routes import router as staff_clients_router
 from .staff_registration_preflight_routes import router as staff_registration_preflight_router
+from .staff_registration_release_routes import router as staff_registration_release_router
 from fastapi.responses import JSONResponse
 
 app = FastAPI(
@@ -80,3 +81,6 @@ app.include_router(staff_clients_router)
 
 # Local validation only; no borrower or loan write route is activated.
 app.include_router(staff_registration_preflight_router)
+
+# Informational release status is opt-in and never authorizes client creation.
+app.include_router(staff_registration_release_router)
