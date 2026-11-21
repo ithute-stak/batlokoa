@@ -23,6 +23,10 @@ class DirectoryGateway implements StaffGateway {
   @override Future<StaffSession?> session() async => null;
   @override Future<StaffSession> login(String phone, String password) async =>
       throw StateError('Not in use');
+  @override
+  Future<StaffRegistrationPreflight> validateRegistration(
+      Map<String, dynamic> draft) async =>
+      throw StateError('Preflight disabled in this fixture');
   @override Future<void> logout() async {}
 }
 
