@@ -137,7 +137,7 @@ class Content extends StatelessWidget{
  final String title,subtitle;final List<Widget> children;
  const Content({super.key,required this.title,this.subtitle='',required this.children});
  @override Widget build(BuildContext context)=>ListView(padding:BatlokoaDesign.pagePadding(MediaQuery.sizeOf(context).width),children:[
- Text(title,style:Theme.of(context).textTheme.headlineMedium),
+ Row(children:[const BatlokoaLogo(size:42),const SizedBox(width:12),Expanded(child:Text(title,style:Theme.of(context).textTheme.headlineMedium))]),
  if(subtitle.isNotEmpty)...[const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.black54))],
  const SizedBox(height:16),
  const DemoNotice(),
