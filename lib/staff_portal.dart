@@ -213,7 +213,7 @@ class _StaffPortalState extends State<StaffPortal> {
           trailing: const Icon(Icons.chevron_right),
           onTap: _busy ? null : () => Navigator.push(
             context, MaterialPageRoute<void>(
-              builder: (_) => StaffClientRegistrationScreen(staff: session),
+              builder: (_) => StaffClientRegistrationScreen(staff: session, gateway: widget.gateway),
             ),
           ),
         )),
