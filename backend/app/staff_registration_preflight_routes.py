@@ -1,0 +1,95 @@
+"""Opt-in staff registration validation only; NEVER creates borrower records.
+
+No upstream write, search, reservation or identity-clearance claim is made.
+Response deliberately excludes all supplied client personal information.
+"""
+from __future__ import annotations
+
+import secrets
+from datetime import date
+from uuid import UUID
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from .loanhub_staff_verifier import StaffVerificationUnavailable
+from .staff_authorization import StaffAccessDenied
+from .staff_client_registration import (
+    ClientRegistrationDraft, prepare_client_registration,
+)
+from .staff_login_routes import (
+    COOKIE, CSRF_COOKIE, NO_STORE, _config, _same_origin,
+)
+
+router = APIRouter()
+
+
+class RegistrationPreflightRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    phone: str = Field(min_length=8, max_length=30)
+    date_of_birth: date
+    gender: str = Field(min_length=1, max_length=100)
+    district: str = Field(min_length=1, max_length=100)
+    employment_status: str = Field(min_length=1, max_length=100)
+    branch_id: UUID
+    national_id: str | None = Field(default=None, max_length=100)
+    passport_number: str | None = Field(default=None, max_length=100)
+    monthly_income: str | None = Field(default=None, max_length=100)
+    consent_to_share_profile: bool = False
+    consent_to_credit_checks: bool = False
+
+
+def _deny(code: str, status: int) -> JSONResponse:
+    return JSONResponse({"code": code}, status_code=status, headers=NO_STORE)
+
+
+@router.post("/api/v1/staff/clients/registration-preflight", include_in_schema=False)
+def registration_preflight(payload: RegistrationPreflightRequest, request: Request):
+    cfg = _config(request)
+    if (
+        cfg is None or
+        getattr(request.app.state, "staff_registration_preflight_enabled", False) is not True
+    ):
+        return _deny("REGISTRATION_PREFLIGHT_DISABLED", 503)
+    if not _same_origin(request, cfg.public_origin):
+        return _deny("FORBIDDEN_ORIGIN", 403)
+    cookie = request.cookies.get(COOKIE, "")
+    record = cfg.store.resolve(cookie)
+    if record is None:
+        return _deny("UNAUTHENTICATED", 401)
+    csrf = request.headers.get("x-csrf-token", "")
+    if (
+        not csrf or
+        not secrets.compare_digest(csrf, record.csrf_token) or
+        request.cookies.get(CSRF_COOKIE) != csrf
+    ):
+        return _deny("CSRF_REJECTED", 403)
+    try:
+        identity = cfg.verifier.verify(record.access_token)
+        result = prepare_client_registration(
+            staff=identity,
+            draft=ClientRegistrationDraft(**payload.model_dump()),
+        )
+    except StaffVerificationUnavailable:
+        cfg.store.revoke(cookie)
+        return _deny("UNAUTHENTICATED", 401)
+    except StaffAccessDenied:
+        return _deny("FORBIDDEN_STAFF_SCOPE", 403)
+    except (ValueError, TypeError):
+        return _deny("INVALID_REGISTRATION_DRAFT", 422)
+
+    # This is merely syntax/authorization validation, not deduplication.
+    # Never echo national ID, phone, birthdate, salary or name into responses.
+    if result.can_submit is not False or result.identity_review_required is not True:
+        return _deny("REGISTRATION_WRITES_NOT_AUTHORIZED", 503)
+    return JSONResponse({
+        "validated": True,
+        "identity_review_required": True,
+        "can_submit": False,
+        "company_id": str(result.company_id),
+        "branch_id": str(result.branch_id),
+        "reasons": list(result.reasons),
+    }, headers=NO_STORE)
