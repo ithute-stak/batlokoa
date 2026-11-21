@@ -68,6 +68,10 @@ void main() {
       of: find.byKey(const Key('register-review-summary')),
       matching: find.textContaining('TEST-NATIONAL-ID')),
       findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Submit registration — unavailable'), 180,
+      scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     expect(find.text('Submit registration — unavailable'), findsOneWidget);
   });
 
@@ -83,6 +87,11 @@ void main() {
     final review = tester.widget<FilledButton>(
         find.byKey(const Key('register-review')));
     expect(review.onPressed, isNull);
+    // The branch warning is near the top of the long, lazily built form.
+    await tester.dragUntilVisible(
+      find.textContaining('No verified branch is available'),
+      find.byType(Scrollable).first, const Offset(0, 250));
+    await tester.pumpAndSettle();
     expect(find.textContaining('No verified branch is available'), findsOneWidget);
   });
 
