@@ -5,7 +5,10 @@ import 'staff_gateway.dart';
 /// POST calls, persistence, drafts in storage, or registration confirmations.
 class StaffClientRegistrationScreen extends StatefulWidget {
   final StaffSession staff;
-  const StaffClientRegistrationScreen({super.key, required this.staff});
+  final StaffGateway gateway;
+  const StaffClientRegistrationScreen({
+    super.key, required this.staff, this.gateway = const DisabledStaffGateway(),
+  });
 
   @override
   State<StaffClientRegistrationScreen> createState() =>
@@ -29,6 +32,8 @@ class _StaffClientRegistrationScreenState
   bool _shareConsent = false;
   bool _creditConsent = false;
   bool _review = false;
+  bool _serverBusy = false;
+  String? _serverResult;
 
   @override
   void initState() {
@@ -80,7 +85,51 @@ class _StaffClientRegistrationScreenState
       ));
       return;
     }
-    setState(() => _review = true);
+    setState(() { _review = true; _serverResult = null; });
+  }
+
+
+  Future<void> _validateOnServer() async {
+    if (_serverBusy || !_review || _branch == null) return;
+    // The browser sends input only on an explicit employee action.
+    // Never persist this sensitive draft or claim identity clearance.
+    setState(() {
+      _serverBusy = true;
+      _serverResult = null;
+    });
+    try {
+      final result = await widget.gateway.validateRegistration({
+        'first_name': _firstName.text.trim(),
+        'last_name': _lastName.text.trim(),
+        'phone': _phone.text.trim(),
+        'date_of_birth': _birthDate.text.trim(),
+        'gender': _gender.text.trim(),
+        'district': _district.text.trim(),
+        'employment_status': _employment.text.trim(),
+        'branch_id': _branch,
+        'national_id': _nationalId.text.trim().isEmpty
+            ? null : _nationalId.text.trim(),
+        'passport_number': _passport.text.trim().isEmpty
+            ? null : _passport.text.trim(),
+        'monthly_income': _income.text.trim().isEmpty
+            ? null : _income.text.trim(),
+        'consent_to_share_profile': _shareConsent,
+        'consent_to_credit_checks': _creditConsent,
+      });
+      if (!mounted) return;
+      if (result.branchId != _branch ||
+          !result.identityReviewRequired) {
+        throw const FormatException('Untrusted review scope');
+      }
+      setState(() => _serverResult =
+          'Server validation completed. Identity and legacy record review '
+          'are still required. Submission remains unavailable.');
+    } catch (_) {
+      if (mounted) setState(() => _serverResult =
+          'Server validation unavailable. No client was registered.');
+    } finally {
+      if (mounted) setState(() => _serverBusy = false);
+    }
   }
 
   @override
@@ -114,7 +163,9 @@ class _StaffClientRegistrationScreenState
         border: const OutlineInputBorder(),
       ),
       validator: validate,
-      onChanged: (_) { if (_review) setState(() => _review = false); },
+      onChanged: (_) { if (_review) setState(() {
+        _review = false; _serverResult = null;
+      }); },
     ),
   );
 
@@ -204,6 +255,17 @@ class _StaffClientRegistrationScreenState
                     const Text('Identity and legacy-client duplication must be '
                         'independently reviewed. No application, client account '
                         'or loan is created from this screen.'),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      key: const Key('register-server-preflight'),
+                      onPressed: _serverBusy ? null : _validateOnServer,
+                      icon: const Icon(Icons.verified_user_outlined),
+                      label: Text(_serverBusy ? 'Validating...' :
+                          'Validate with secure gateway (no submission)'),
+                    ),
+                    if (_serverResult != null)
+                      Text(_serverResult!,
+                          key: const Key('register-server-result')),
                   ],
                 ))),
           ],
