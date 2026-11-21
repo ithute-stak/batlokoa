@@ -16,7 +16,13 @@ Future<void> showForm(WidgetTester tester, {StaffSession staff = assigned}) asyn
 
 Future<void> enter(WidgetTester tester, String key, String value) async {
   final widget = find.byKey(Key('register-$key'));
-  await tester.ensureVisible(widget);
+  if (widget.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(widget, 180,
+        scrollable: find.byType(Scrollable).first);
+  } else {
+    await tester.ensureVisible(widget);
+  }
+  await tester.pumpAndSettle();
   await tester.enterText(widget, value);
 }
 
@@ -24,7 +30,10 @@ void main() {
   testWidgets('invalid client details never produce a review or submission',
       (tester) async {
     await showForm(tester);
-    await tester.ensureVisible(find.byKey(const Key('register-review')));
+    await tester.testTextInput.hide();
+    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
+        180, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-review')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsNothing);
@@ -46,7 +55,10 @@ void main() {
     await enter(tester, 'employment-status', 'Employed');
     await enter(tester, 'national-id', 'TEST-NATIONAL-ID');
     await enter(tester, 'monthly-income', '1250.00');
-    await tester.ensureVisible(find.byKey(const Key('register-review')));
+    await tester.testTextInput.hide();
+    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
+        180, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-review')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
@@ -79,11 +91,18 @@ void main() {
     await enter(tester, 'district', 'Maseru');
     await enter(tester, 'employment-status', 'Employed');
     await enter(tester, 'passport-number', 'TEST-PASSPORT');
-    await tester.ensureVisible(find.byKey(const Key('register-review')));
+    await tester.testTextInput.hide();
+    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
+        180, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-review')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
-    await enter(tester, 'first-name', 'Mpho');
+    final firstName = find.byKey(const Key('register-first-name'));
+    await tester.dragUntilVisible(firstName, find.byType(Scrollable).first,
+        const Offset(0, 220));
+    await tester.pumpAndSettle();
+    await tester.enterText(firstName, 'Mpho');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsNothing);
   });
