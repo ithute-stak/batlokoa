@@ -30,7 +30,7 @@ void main() {
   testWidgets('invalid client details never produce a review or submission',
       (tester) async {
     await showForm(tester);
-    await tester.testTextInput.hide();
+    tester.testTextInput.hide();
     await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
         180, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
@@ -55,7 +55,7 @@ void main() {
     await enter(tester, 'employment-status', 'Employed');
     await enter(tester, 'national-id', 'TEST-NATIONAL-ID');
     await enter(tester, 'monthly-income', '1250.00');
-    await tester.testTextInput.hide();
+    tester.testTextInput.hide();
     await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
         180, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
@@ -91,7 +91,7 @@ void main() {
     await enter(tester, 'district', 'Maseru');
     await enter(tester, 'employment-status', 'Employed');
     await enter(tester, 'passport-number', 'TEST-PASSPORT');
-    await tester.testTextInput.hide();
+    tester.testTextInput.hide();
     await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
         180, scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
