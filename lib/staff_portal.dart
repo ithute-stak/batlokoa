@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
+import 'staff_client_directory_screen.dart';
 
 /// Separate staff experience; customer demo state is never reused.
 class StaffPortal extends StatefulWidget {
@@ -190,9 +191,20 @@ class _StaffPortalState extends State<StaffPortal> {
         const Text('Operations',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
+        Card(child: ListTile(
+          key: const Key('staff-find-clients'),
+          leading: const Icon(Icons.people_outline),
+          title: const Text('Find clients'),
+          subtitle: const Text('Search your authorized LoanHub client directory'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _busy ? null : () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(builder: (_) =>
+                StaffClientDirectoryScreen(
+                  gateway: widget.gateway, staff: session)),
+          ),
+        )),
         for (final item in const [
-          (Icons.people_outline, 'Find clients',
-            'Live client directory pending secure adapter'),
           (Icons.person_add_alt_outlined, 'Register client',
             'Client registration awaiting approval'),
           (Icons.description_outlined, 'New loan application',
