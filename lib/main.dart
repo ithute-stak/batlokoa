@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
+import 'batlokoa_logo.dart';
 import 'demo_finance_components.dart';
 import 'demo_draft_guard.dart';
 import 'demo_form_error.dart';
@@ -31,7 +32,7 @@ class _EntryState extends State<Entry>{
  Scaffold(body:SafeArea(child:Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),
  child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:440),child:Column(
  crossAxisAlignment:CrossAxisAlignment.stretch,children:[
- const CircleAvatar(radius:42,backgroundColor:teal,child:Text('BFS',style:TextStyle(color:Colors.white,fontWeight:FontWeight.w900,fontSize:25))),
+ const Center(child: BatlokoaLogo(size: 100)),
  const SizedBox(height:20),Text(BatlokoaDesign.companyName,textAlign:TextAlign.center,style:Theme.of(context).textTheme.headlineMedium),
  const Text(BatlokoaDesign.motto,textAlign:TextAlign.center),
  const SizedBox(height:28),CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -86,7 +87,7 @@ class _ShellState extends State<Shell> {
  body:SafeArea(child:Row(children:[
  if(wide)NavigationRail(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),
  extended:MediaQuery.sizeOf(context).width>1100,backgroundColor:Colors.white,
- leading:const Padding(padding:EdgeInsets.all(16),child:CircleAvatar(backgroundColor:teal,child:Icon(Icons.wallet,color:Colors.white))),
+ leading:const Padding(padding:EdgeInsets.all(12),child:BatlokoaLogo(size: 54)),
  destinations:[for(int i=0;i<names.length;i++)NavigationRailDestination(icon:Icon(icons[i]),label:Text(names[i]))]),
  Expanded(child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:1100),
  child:IndexedStack(index:tab,children:pages)))),
@@ -168,7 +169,7 @@ void demo(BuildContext context,String label)=>showDialog<void>(context:context,b
 class Home extends StatelessWidget{
  final ValueChanged<int> go;final ValueChanged<Widget> open;
  const Home({super.key,required this.go,required this.open});
- @override Widget build(BuildContext context)=>Content(title:'Good morning 👋',subtitle:'Welcome to Batlokoa Finance',children:[
+ @override Widget build(BuildContext context)=>Content(title:'Good morning 👋',subtitle:BatlokoaDesign.companyName,children:[
  DemoBalanceCard(
  label:'Sample wallet balance',
  amount:'M 2,450.00',
