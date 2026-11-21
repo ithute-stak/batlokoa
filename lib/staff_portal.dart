@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
+import 'staff_client_registration_screen.dart';
 
 /// Separate staff experience; customer demo state is never reused.
 class StaffPortal extends StatefulWidget {
@@ -204,9 +205,19 @@ class _StaffPortalState extends State<StaffPortal> {
                   gateway: widget.gateway, staff: session)),
           ),
         )),
+        Card(child: ListTile(
+          key: const Key('staff-register-client'),
+          leading: const Icon(Icons.person_add_alt_outlined),
+          title: const Text('Register client'),
+          subtitle: const Text('Prepare client details for identity review; no submission'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _busy ? null : () => Navigator.push(
+            context, MaterialPageRoute<void>(
+              builder: (_) => StaffClientRegistrationScreen(staff: session),
+            ),
+          ),
+        )),
         for (final item in const [
-          (Icons.person_add_alt_outlined, 'Register client',
-            'Client registration awaiting approval'),
           (Icons.description_outlined, 'New loan application',
             'Application submission not yet enabled'),
           (Icons.request_quote_outlined, 'Prepare loan offer',
