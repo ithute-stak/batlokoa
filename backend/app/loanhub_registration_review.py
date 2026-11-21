@@ -101,11 +101,8 @@ class LoanHubRegistrationReview:
                 or type(data.get("identity_match_found")) is not bool
                 or type(data.get("legacy_capture_found")) is not bool
                 or data.get("decision") not in {
-                    "existing_company_client",
                     "manual_review_required",
-                    "identity_review_required",
-                    "review_required",
-                    "no_existing_record_reported",
+                    "new_identity_candidate",
                 }
             ):
                 raise RegistrationIdentityReviewUnavailable(
