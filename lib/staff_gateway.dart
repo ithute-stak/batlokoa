@@ -30,10 +30,52 @@ class StaffSession {
   }
 }
 
+/// Minimal directory row, containing no borrower identity documents or balances.
+class StaffClient {
+  final String accountId;
+  final String accountReference;
+  final String companyId;
+  final String? branchId;
+  final String fullName;
+  final String status;
+
+  const StaffClient({
+    required this.accountId,
+    required this.accountReference,
+    required this.companyId,
+    required this.branchId,
+    required this.fullName,
+    required this.status,
+  });
+
+  factory StaffClient.fromJson(Map<String, dynamic> json) {
+    String requiredValue(String key) {
+      final value = json[key];
+      if (value is! String || value.trim().isEmpty || value.length > 200) {
+        throw const FormatException('Invalid client directory response');
+      }
+      return value;
+    }
+    final branch = json['branch_id'];
+    if (branch != null && (branch is! String || branch.isEmpty)) {
+      throw const FormatException('Invalid client branch');
+    }
+    return StaffClient(
+      accountId: requiredValue('account_id'),
+      accountReference: requiredValue('account_reference'),
+      companyId: requiredValue('company_id'),
+      branchId: branch as String?,
+      fullName: requiredValue('full_name'),
+      status: requiredValue('status'),
+    );
+  }
+}
+
 abstract class StaffGateway {
   Future<StaffSession?> session();
   Future<StaffSession> login(String phone, String password);
   Future<void> logout();
+  Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30});
 }
 
 /// Explicitly disabled until a reviewed same-origin BFF client is installed.
@@ -49,7 +91,57 @@ class DisabledStaffGateway implements StaffGateway {
       throw StateError('Employee sign-in has not been configured');
 
   @override
+  Future<List<StaffClient>> findClients({
+    String search = '', String? branchId, int limit = 30,
+  }) async {
+    if (search.length > 120 || limit < 1 || limit > 100 ||
+        (branchId != null && branchId.trim().isEmpty)) {
+      throw ArgumentError('Invalid client directory filters');
+    }
+    final query = <String, String>{
+      'search': search.trim(),
+      'limit': '$limit',
+      if (branchId != null) 'branch_id': branchId,
+    };
+    final uri = _url('/api/v1/staff/clients')
+        .replace(queryParameters: query);
+    final res = await client.get(uri, headers: {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-store',
+    });
+    if (res.statusCode == 401) {
+      throw StateError('Employee session expired. Sign in again.');
+    }
+    if (res.statusCode != 200 || res.bodyBytes.length > 262144) {
+      throw StateError('Client directory is unavailable');
+    }
+    final parsed = jsonDecode(res.body);
+    if (parsed is! Map<String, dynamic> ||
+        parsed['clients'] is! List ||
+        (parsed['clients'] as List).length > limit) {
+      throw const FormatException('Unexpected client directory response');
+    }
+    final clients = <StaffClient>[];
+    final seen = <String>{};
+    for (final item in parsed['clients'] as List) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException('Unexpected client directory record');
+      }
+      final row = StaffClient.fromJson(item);
+      if (!seen.add(row.accountId)) {
+        throw const FormatException('Duplicate client directory record');
+      }
+      clients.add(row);
+    }
+    return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
   Future<void> logout() async {}
+
+  @override
+  Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30}) async =>
+      throw StateError('Employee client directory is not configured');
 }
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
