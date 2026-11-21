@@ -20,7 +20,7 @@ const teal=BatlokoaDesign.primary, mint=BatlokoaDesign.accent, bg=BatlokoaDesign
 class BatlokoaApp extends StatelessWidget {
   const BatlokoaApp({super.key});
   @override Widget build(BuildContext context)=>MaterialApp(
-    debugShowCheckedModeBanner:false,title:'Batlokoa Finance',
+    debugShowCheckedModeBanner:false,title:BatlokoaDesign.companyName,
     theme:BatlokoaDesign.theme(),
     home:const Entry());
 }
@@ -31,9 +31,9 @@ class _EntryState extends State<Entry>{
  Scaffold(body:SafeArea(child:Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),
  child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:440),child:Column(
  crossAxisAlignment:CrossAxisAlignment.stretch,children:[
- const CircleAvatar(radius:42,backgroundColor:teal,child:Icon(Icons.account_balance_wallet,color:Colors.white,size:42)),
- const SizedBox(height:20),Text('Batlokoa Finance',textAlign:TextAlign.center,style:Theme.of(context).textTheme.headlineMedium),
- const Text('Borrow smarter. Pay easier.',textAlign:TextAlign.center),
+ const CircleAvatar(radius:42,backgroundColor:teal,child:Text('BFS',style:TextStyle(color:Colors.white,fontWeight:FontWeight.w900,fontSize:25))),
+ const SizedBox(height:20),Text(BatlokoaDesign.companyName,textAlign:TextAlign.center,style:Theme.of(context).textTheme.headlineMedium),
+ const Text(BatlokoaDesign.motto,textAlign:TextAlign.center),
  const SizedBox(height:28),CardBox(child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
  Text(login?'Welcome back':'Create an account',style:const TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
  const SizedBox(height:16),
