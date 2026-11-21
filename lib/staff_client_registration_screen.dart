@@ -208,7 +208,7 @@ class _StaffClientRegistrationScreenState
                 ))),
           ],
           const SizedBox(height: 12),
-          const OutlinedButton.icon(
+          OutlinedButton.icon(
             onPressed: null,
             icon: Icon(Icons.lock_outline),
             label: Text('Submit registration — unavailable'),
