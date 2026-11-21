@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'batlokoa_logo.dart';
 
 import 'customer_session.dart';
 
@@ -51,7 +52,7 @@ class _CustomerSessionScreenState extends State<CustomerSessionScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Secure sign-in status')),
+        appBar: AppBar(title: const Row(children: [BatlokoaLogo(size: 34), SizedBox(width: 10), Text('Secure sign-in status')])),
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
