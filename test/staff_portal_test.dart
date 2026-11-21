@@ -14,6 +14,10 @@ class FakeStaffGateway implements StaffGateway {
         role: 'LOAN_OFFICER', companyId: 'verified-company',
         branchIds: ['verified-branch'], companyWide: false);
   }
+  @override
+  Future<StaffRegistrationPreflight> validateRegistration(
+      Map<String, dynamic> draft) async =>
+      throw StateError('Preflight disabled in this fixture');
   @override Future<void> logout() async { current = null; }
   @override Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30}) async => const [];
 
