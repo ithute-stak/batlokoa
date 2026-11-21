@@ -64,7 +64,10 @@ void main() {
     expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
     expect(find.textContaining('Palesa Mokoena'), findsOneWidget);
     expect(find.textContaining('test-branch'), findsWidgets);
-    expect(find.textContaining('TEST-NATIONAL-ID'), findsNothing);
+    expect(find.descendant(
+      of: find.byKey(const Key('register-review-summary')),
+      matching: find.textContaining('TEST-NATIONAL-ID')),
+      findsNothing);
     expect(find.text('Submit registration — unavailable'), findsOneWidget);
   });
 
@@ -74,6 +77,9 @@ void main() {
       role: 'LOAN_OFFICER', companyId: 'test-company',
       branchIds: [], companyWide: false,
     ));
+    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
+        180, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     final review = tester.widget<FilledButton>(
         find.byKey(const Key('register-review')));
     expect(review.onPressed, isNull);
