@@ -90,51 +90,6 @@ class DisabledStaffGateway implements StaffGateway {
   Future<StaffSession> login(String phone, String password) async =>
       throw StateError('Employee sign-in has not been configured');
 
-  @override
-  Future<List<StaffClient>> findClients({
-    String search = '', String? branchId, int limit = 30,
-  }) async {
-    if (search.length > 120 || limit < 1 || limit > 100 ||
-        (branchId != null && branchId.trim().isEmpty)) {
-      throw ArgumentError('Invalid client directory filters');
-    }
-    final query = <String, String>{
-      'search': search.trim(),
-      'limit': '$limit',
-      if (branchId != null) 'branch_id': branchId,
-    };
-    final uri = _url('/api/v1/staff/clients')
-        .replace(queryParameters: query);
-    final res = await client.get(uri, headers: {
-      'Accept': 'application/json',
-      'Cache-Control': 'no-store',
-    });
-    if (res.statusCode == 401) {
-      throw StateError('Employee session expired. Sign in again.');
-    }
-    if (res.statusCode != 200 || res.bodyBytes.length > 262144) {
-      throw StateError('Client directory is unavailable');
-    }
-    final parsed = jsonDecode(res.body);
-    if (parsed is! Map<String, dynamic> ||
-        parsed['clients'] is! List ||
-        (parsed['clients'] as List).length > limit) {
-      throw const FormatException('Unexpected client directory response');
-    }
-    final clients = <StaffClient>[];
-    final seen = <String>{};
-    for (final item in parsed['clients'] as List) {
-      if (item is! Map<String, dynamic>) {
-        throw const FormatException('Unexpected client directory record');
-      }
-      final row = StaffClient.fromJson(item);
-      if (!seen.add(row.accountId)) {
-        throw const FormatException('Duplicate client directory record');
-      }
-      clients.add(row);
-    }
-    return List<StaffClient>.unmodifiable(clients);
-  }
 
   @override
   Future<void> logout() async {}
@@ -184,6 +139,52 @@ class SameOriginStaffGateway implements StaffGateway {
     final verified = await session();
     if (verified == null) throw StateError('Employee session unavailable');
     return verified;
+  }
+
+  @override
+  Future<List<StaffClient>> findClients({
+    String search = '', String? branchId, int limit = 30,
+  }) async {
+    if (search.length > 120 || limit < 1 || limit > 100 ||
+        (branchId != null && branchId.trim().isEmpty)) {
+      throw ArgumentError('Invalid client directory filters');
+    }
+    final query = <String, String>{
+      'search': search.trim(),
+      'limit': '$limit',
+      if (branchId != null) 'branch_id': branchId,
+    };
+    final uri = _url('/api/v1/staff/clients')
+        .replace(queryParameters: query);
+    final res = await client.get(uri, headers: {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-store',
+    });
+    if (res.statusCode == 401) {
+      throw StateError('Employee session expired. Sign in again.');
+    }
+    if (res.statusCode != 200 || res.bodyBytes.length > 262144) {
+      throw StateError('Client directory is unavailable');
+    }
+    final parsed = jsonDecode(res.body);
+    if (parsed is! Map<String, dynamic> ||
+        parsed['clients'] is! List ||
+        (parsed['clients'] as List).length > limit) {
+      throw const FormatException('Unexpected client directory response');
+    }
+    final clients = <StaffClient>[];
+    final seen = <String>{};
+    for (final item in parsed['clients'] as List) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException('Unexpected client directory record');
+      }
+      final row = StaffClient.fromJson(item);
+      if (!seen.add(row.accountId)) {
+        throw const FormatException('Duplicate client directory record');
+      }
+      clients.add(row);
+    }
+    return List<StaffClient>.unmodifiable(clients);
   }
 
   @override
