@@ -71,10 +71,40 @@ class StaffClient {
   }
 }
 
+/// Review only. This deliberately cannot grant permission to submit a client.
+class StaffRegistrationPreflight {
+  final bool identityReviewRequired;
+  final String branchId;
+  final List<String> reasons;
+
+  const StaffRegistrationPreflight({
+    required this.identityReviewRequired,
+    required this.branchId,
+    required this.reasons,
+  });
+
+  factory StaffRegistrationPreflight.fromJson(Map<String, dynamic> json) {
+    if (json['validated'] != true ||
+        json['can_submit'] != false ||
+        json['identity_review_required'] != true ||
+        json['branch_id'] is! String ||
+        json['reasons'] is! List ||
+        !(json['reasons'] as List).every((v) => v is String)) {
+      throw const FormatException('Untrusted registration preflight response');
+    }
+    return StaffRegistrationPreflight(
+      identityReviewRequired: true,
+      branchId: json['branch_id'] as String,
+      reasons: List<String>.unmodifiable((json['reasons'] as List).cast<String>()),
+    );
+  }
+}
+
 abstract class StaffGateway {
   Future<StaffSession?> session();
   Future<StaffSession> login(String phone, String password);
   Future<void> logout();
+  Future<StaffRegistrationPreflight> validateRegistration(Map<String, dynamic> draft);
   Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30});
 }
 
@@ -90,6 +120,10 @@ class DisabledStaffGateway implements StaffGateway {
   Future<StaffSession> login(String phone, String password) async =>
       throw StateError('Employee sign-in has not been configured');
 
+
+  @override
+  Future<StaffRegistrationPreflight> validateRegistration(Map<String, dynamic> draft) async =>
+      throw StateError('Registration preflight is not configured');
 
   @override
   Future<void> logout() async {}
@@ -185,6 +219,34 @@ class SameOriginStaffGateway implements StaffGateway {
       clients.add(row);
     }
     return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
+  Future<StaffRegistrationPreflight> validateRegistration(
+      Map<String, dynamic> draft) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Registration validation requires CSRF proof');
+    }
+    final response = await client.post(
+      _url('/api/v1/staff/clients/registration-preflight'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      },
+      body: jsonEncode(draft),
+    );
+    if (response.statusCode != 200 || response.bodyBytes.length > 16384) {
+      throw StateError('Registration validation unavailable or denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Unexpected preflight response');
+    }
+    return StaffRegistrationPreflight.fromJson(data);
   }
 
   @override
