@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:batlokoa/batlokoa_design.dart';
+import 'package:batlokoa/batlokoa_logo.dart';
 import 'package:batlokoa/main.dart';
 
 void main() {
@@ -19,7 +20,7 @@ void main() {
     await tester.pumpWidget(const BatlokoaApp());
     expect(find.text(BatlokoaDesign.companyName), findsOneWidget);
     expect(find.text(BatlokoaDesign.motto), findsOneWidget);
-    expect(find.text('BFS'), findsOneWidget);
+    expect(find.byType(BatlokoaLogo), findsWidgets);
     expect(find.text('Borrow smarter. Pay easier.'), findsNothing);
   });
 }
