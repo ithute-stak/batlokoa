@@ -15,6 +15,8 @@ class FakeStaffGateway implements StaffGateway {
         branchIds: ['verified-branch'], companyWide: false);
   }
   @override Future<void> logout() async { current = null; }
+  @override Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30}) async => const [];
+
 }
 
 void main() {
@@ -31,6 +33,7 @@ void main() {
     expect(find.text('Employee workspace'), findsOneWidget);
     expect(find.text('Branch ID: verified-branch'), findsOneWidget);
     expect(find.text('Register client'), findsOneWidget);
+    expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
     await tester.tap(find.byKey(const Key('staff-logout')));
     await tester.pumpAndSettle();
     expect(find.text('Employee sign in'), findsOneWidget);
