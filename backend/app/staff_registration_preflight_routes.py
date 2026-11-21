@@ -15,6 +15,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from .loanhub_staff_verifier import StaffVerificationUnavailable
+from .loanhub_registration_review import (
+    LoanHubRegistrationReview, RegistrationIdentityReviewUnavailable,
+)
 from .staff_authorization import StaffAccessDenied
 from .staff_client_registration import (
     ClientRegistrationDraft, prepare_client_registration,
@@ -108,6 +111,48 @@ async def registration_preflight(request: Request):
     # Never echo national ID, phone, birthdate, salary or name into responses.
     if result.can_submit is not False or result.identity_review_required is not True:
         return _deny("REGISTRATION_WRITES_NOT_AUTHORIZED", 503)
+
+    identity_review = {
+        "status": "not_checked",
+        "decision": "human_review_required",
+        "identity_match_found": None,
+        "legacy_capture_found": None,
+        "requires_human_review": True,
+        "can_commit": False,
+    }
+    review_adapter = getattr(request.app.state, "staff_registration_identity_review", None)
+    review_enabled = getattr(
+        request.app.state, "staff_registration_identity_review_enabled", False
+    ) is True
+    if review_enabled:
+        # Never silently substitute a different lookup, nor treat a passport
+        # as a national ID. A separate trusted passport review is required.
+        if (
+            not isinstance(review_adapter, LoanHubRegistrationReview)
+            or review_adapter._origin != cfg.loanhub_origin.rstrip("/")
+        ):
+            return _deny("IDENTITY_REVIEW_UNAVAILABLE", 503)
+        if not payload.national_id or not payload.national_id.strip():
+            identity_review["status"] = "unsupported_identity_document"
+        else:
+            try:
+                reviewed = review_adapter.review(
+                    staff=identity, access_token=record.access_token,
+                    branch_id=payload.branch_id,
+                    national_id=payload.national_id,
+                )
+            except StaffAccessDenied:
+                return _deny("FORBIDDEN_STAFF_SCOPE", 403)
+            except (RegistrationIdentityReviewUnavailable, ValueError, TypeError):
+                return _deny("IDENTITY_REVIEW_UNAVAILABLE", 503)
+            identity_review = {
+                "status": "advisory_review_completed",
+                "decision": reviewed.decision,
+                "identity_match_found": reviewed.identity_match_found,
+                "legacy_capture_found": reviewed.legacy_capture_found,
+                "requires_human_review": True,
+                "can_commit": False,
+            }
     return JSONResponse({
         "validated": True,
         "identity_review_required": True,
@@ -115,4 +160,5 @@ async def registration_preflight(request: Request):
         "company_id": str(result.company_id),
         "branch_id": str(result.branch_id),
         "reasons": list(result.reasons),
+        "identity_review": identity_review,
     }, headers=NO_STORE)
