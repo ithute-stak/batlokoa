@@ -5,13 +5,14 @@ Response deliberately excludes all supplied client personal information.
 """
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from .loanhub_staff_verifier import StaffVerificationUnavailable
 from .staff_authorization import StaffAccessDenied
@@ -26,7 +27,7 @@ router = APIRouter()
 
 
 class RegistrationPreflightRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid")
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     phone: str = Field(min_length=8, max_length=30)
@@ -38,8 +39,8 @@ class RegistrationPreflightRequest(BaseModel):
     national_id: str | None = Field(default=None, max_length=100)
     passport_number: str | None = Field(default=None, max_length=100)
     monthly_income: str | None = Field(default=None, max_length=100)
-    consent_to_share_profile: bool = False
-    consent_to_credit_checks: bool = False
+    consent_to_share_profile: StrictBool = False
+    consent_to_credit_checks: StrictBool = False
 
 
 def _deny(code: str, status: int) -> JSONResponse:
@@ -47,7 +48,7 @@ def _deny(code: str, status: int) -> JSONResponse:
 
 
 @router.post("/api/v1/staff/clients/registration-preflight", include_in_schema=False)
-def registration_preflight(payload: RegistrationPreflightRequest, request: Request):
+async def registration_preflight(request: Request):
     cfg = _config(request)
     if (
         cfg is None or
@@ -67,15 +68,37 @@ def registration_preflight(payload: RegistrationPreflightRequest, request: Reque
         request.cookies.get(CSRF_COOKIE) != csrf
     ):
         return _deny("CSRF_REJECTED", 403)
+    # Verify the staff token before parsing potentially sensitive client data.
     try:
         identity = cfg.verifier.verify(record.access_token)
+    except StaffVerificationUnavailable:
+        cfg.store.revoke(cookie)
+        return _deny("UNAUTHENTICATED", 401)
+
+    if "application/json" not in request.headers.get("content-type", "").lower():
+        return _deny("INVALID_REGISTRATION_DRAFT", 415)
+    if request.headers.get("content-length") is not None:
+        try:
+            if int(request.headers["content-length"]) > 8192:
+                return _deny("REGISTRATION_DRAFT_TOO_LARGE", 413)
+        except ValueError:
+            return _deny("INVALID_REGISTRATION_DRAFT", 422)
+    raw = await request.body()
+    if len(raw) > 8192:
+        return _deny("REGISTRATION_DRAFT_TOO_LARGE", 413)
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("Object required")
+        payload = RegistrationPreflightRequest.model_validate(data)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, ValueError):
+        # Never reflect input into FastAPI's default field-error payload.
+        return _deny("INVALID_REGISTRATION_DRAFT", 422)
+    try:
         result = prepare_client_registration(
             staff=identity,
             draft=ClientRegistrationDraft(**payload.model_dump()),
         )
-    except StaffVerificationUnavailable:
-        cfg.store.revoke(cookie)
-        return _deny("UNAUTHENTICATED", 401)
     except StaffAccessDenied:
         return _deny("FORBIDDEN_STAFF_SCOPE", 403)
     except (ValueError, TypeError):
