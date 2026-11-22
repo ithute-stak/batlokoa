@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
 import 'batlokoa_logo.dart';
 import 'bfs_widgets.dart';
+import 'bfs_responsive.dart';
 import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'staff_client_registration_screen.dart';
@@ -41,9 +42,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
   }
 
   Widget page(Widget header, List<Widget> body) => ListView(
-    padding: EdgeInsets.fromLTRB(
-      MediaQuery.sizeOf(context).width < 370 ? 14 : 20, 20,
-      MediaQuery.sizeOf(context).width < 370 ? 14 : 20, 32),
+    padding: BfsResponsive.pagePadding(context),
     children: [header, const SizedBox(height: 25), ...body],
   );
 
@@ -236,8 +235,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
   Widget build(BuildContext context) {
     final availableWidth = MediaQuery.sizeOf(context).width;
     final wide = availableWidth >= 820;
-    final shortLandscape = availableWidth > 600 &&
-        MediaQuery.sizeOf(context).height < 450;
+
     const destinations = <NavigationDestination>[
       NavigationDestination(icon: Icon(Icons.home_outlined),
         selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
@@ -299,7 +297,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: Color(0xFFE4EAF1)))),
         child: NavigationBar(key: const Key('staff-bottom-navigation'),
-          height: shortLandscape ? 62 : 76,
+          height: BfsResponsive.navigationHeight(context),
           selectedIndex: tab,
           onDestinationSelected: (index) => setState(() => tab = index),
           destinations: destinations)),
