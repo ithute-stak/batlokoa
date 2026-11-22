@@ -1,4 +1,4 @@
-# Controlled disabled-demo image publication trigger: 2026-11-22 BFS branding rollout.
+# Controlled disabled-demo image publication trigger: 2026-11-22 employee read-only pilot.
 name: Publish Batlokoa disabled-demo Docker images
 
 on:
