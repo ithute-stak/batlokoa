@@ -3,6 +3,7 @@ import 'staff_gateway.dart';
 import 'batlokoa_design.dart';
 import 'bfs_responsive.dart';
 import 'bfs_widgets.dart';
+import 'staff_client_directory_screen.dart';
 
 /// Local-only assisted registration preparation. There are deliberately no
 /// POST calls, persistence, drafts in storage, or registration confirmations.
@@ -25,6 +26,7 @@ class _StaffClientRegistrationScreenState
   int _step = -1;
   bool _identityChecked = false;
   bool _checkingIdentity = false;
+  bool _possibleExistingIdentity = false;
   String? _identityMessage;
   String? _checkedNationalId;
   String? _checkedBranch;
@@ -140,6 +142,7 @@ class _StaffClientRegistrationScreenState
     if (nationalId.length < 4 || nationalId.length > 100 || branchId == null) {
       setState(() {
         _identityChecked = false;
+        _possibleExistingIdentity = false;
         _identityMessage = 'Enter a valid National ID and select the branch.';
       });
       return;
@@ -147,6 +150,7 @@ class _StaffClientRegistrationScreenState
     if (widget.gateway is! StaffNationalIdGateway) {
       setState(() {
         _identityChecked = false;
+        _possibleExistingIdentity = false;
         _identityMessage = 'Identity screening is not available. Registration cannot continue.';
       });
       return;
@@ -154,6 +158,7 @@ class _StaffClientRegistrationScreenState
     setState(() {
       _checkingIdentity = true;
       _identityChecked = false;
+      _possibleExistingIdentity = false;
       _identityMessage = null;
     });
     try {
@@ -166,6 +171,7 @@ class _StaffClientRegistrationScreenState
       }
       setState(() {
         _identityChecked = result.mayContinuePreparation;
+        _possibleExistingIdentity = result.status == 'existing_or_review';
         _checkedNationalId = result.mayContinuePreparation ? nationalId : null;
         _checkedBranch = result.mayContinuePreparation ? branchId : null;
         _identityMessage = result.mayContinuePreparation
@@ -178,6 +184,7 @@ class _StaffClientRegistrationScreenState
     } catch (_) {
       if (mounted) setState(() {
         _identityChecked = false;
+        _possibleExistingIdentity = false;
         _identityMessage = 'Identity screening could not be completed. '
             'No registration may proceed until the check succeeds.';
       });
@@ -190,6 +197,7 @@ class _StaffClientRegistrationScreenState
     if (_identityChecked || _identityMessage != null) {
       setState(() {
         _identityChecked = false;
+        _possibleExistingIdentity = false;
         _checkedNationalId = null;
         _checkedBranch = null;
         _identityMessage = null;
@@ -333,6 +341,12 @@ class _StaffClientRegistrationScreenState
   }
 
   void _prepareReview() {
+    if (!_identityChecked ||
+        _checkedNationalId != _nationalId.text.trim() ||
+        _checkedBranch != _branch) {
+      setState(() { _review = false; _step = -1; });
+      return;
+    }
     if (!_form.currentState!.validate()) {
       setState(() => _review = false);
       return;
@@ -350,7 +364,10 @@ class _StaffClientRegistrationScreenState
 
 
   Future<void> _validateOnServer() async {
-    if (_serverBusy || !_review || _branch == null) return;
+    if (_serverBusy || !_review || _branch == null ||
+        !_identityChecked ||
+        _checkedNationalId != _nationalId.text.trim() ||
+        _checkedBranch != _branch) return;
     // The browser sends input only on an explicit employee action.
     // Never persist this sensitive draft or claim identity clearance.
     setState(() {
@@ -421,7 +438,11 @@ class _StaffClientRegistrationScreenState
       maxLength: sensitive ? 100 : 100,
       autocorrect: !sensitive,
       enableSuggestions: !sensitive,
-      obscureText: sensitive,
+      textCapitalization: sensitive ? TextCapitalization.none
+          : TextCapitalization.sentences,
+      // National ID must remain visible for a clerical accuracy check;
+      // suggestions and autocorrect are still disabled for sensitive data.
+      obscureText: sensitive && controller != _nationalId,
       decoration: InputDecoration(
         labelText: name, hintText: hint,
         border: const OutlineInputBorder(),
@@ -499,6 +520,27 @@ class _StaffClientRegistrationScreenState
             key: const Key('register-identity-result'),
             style: const TextStyle(fontSize: 13, height: 1.5))),
         ]))),
+      if (_possibleExistingIdentity) ...[
+        const SizedBox(height: 15),
+        OutlinedButton.icon(
+          key: const Key('register-find-existing-client'),
+          icon: const Icon(Icons.people_alt_outlined),
+          label: const Text('Open existing client directory'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => StaffClientDirectoryScreen(
+                staff: widget.staff, gateway: widget.gateway,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text('Use an authorized client record or refer the identity '
+            'for review. Do not start a second registration. No identity '
+            'number is copied into a search URL.',
+            style: TextStyle(fontSize: 12,
+                color: BatlokoaDesign.secondaryInk)),
+      ],
       const SizedBox(height: 20),
       const Text('An unmatched ID does not guarantee the client is new. '
           'LoanHub must still verify the identity and approve any future '
