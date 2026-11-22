@@ -42,11 +42,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Employee workspace'), findsOneWidget);
     expect(find.text('Register client'), findsOneWidget);
+    expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
     expect(find.byKey(const Key('staff-bottom-navigation')), findsOneWidget);
     await tester.tap(find.text('Account').last);
     await tester.pumpAndSettle();
     expect(find.text('Branch ID: verified-branch'), findsOneWidget);
-    expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
     await tester.ensureVisible(find.byKey(const Key('staff-logout')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('staff-logout')));
@@ -80,9 +80,11 @@ void main() {
     expect(find.text('Company owner workspace'), findsOneWidget);
     expect(find.text('Company-wide staff scope'), findsWidgets);
     expect(find.byKey(const Key('staff-bottom-navigation')), findsOneWidget);
+    expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
+    await tester.tap(find.text('Account').last);
+    await tester.pumpAndSettle();
     expect(find.textContaining('Financial approvals and client creation are not enabled'),
         findsOneWidget);
-    expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
   });
 
 }
