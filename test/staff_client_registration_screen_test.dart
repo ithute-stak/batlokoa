@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:batlokoa/staff_gateway.dart';
 import 'package:batlokoa/staff_client_registration_screen.dart';
+import 'package:batlokoa/staff_client_directory_screen.dart';
 
 const assigned = StaffSession(
   role: 'LOAN_OFFICER', companyId: 'synthetic-company',
@@ -106,6 +107,19 @@ void main() {
       find.byKey(const Key('register-continue')));
     expect(next.onPressed, isNull);
     expect(find.byKey(const Key('register-first-name')), findsNothing);
+    expect(find.byKey(const Key('register-find-existing-client')),
+        findsOneWidget);
+    // A matched national ID sends the employee into the authorized,
+    // read-only client directory rather than a second registration.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('register-find-existing-client')), 160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('register-find-existing-client')));
+    await tester.pumpAndSettle();
+    expect(find.byType(StaffClientDirectoryScreen), findsOneWidget);
+    expect(find.byKey(const Key('register-first-name')), findsNothing);
   });
 
   testWidgets('unavailable ID check fails closed and cannot proceed', (tester) async {
@@ -124,6 +138,7 @@ void main() {
     await showForm(tester, gateway);
     await unlock(tester, gateway);
     expect(find.text('Step 2 of 6'), findsOneWidget);
+    expect(find.byKey(const Key('register-find-existing-client')), findsNothing);
     await enter(tester, 'first-name', 'Palesa');
     await enter(tester, 'last-name', 'Mokoena');
     await enter(tester, 'phone', '59000000');
