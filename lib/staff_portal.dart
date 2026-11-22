@@ -3,6 +3,7 @@ import 'batlokoa_logo.dart';
 import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'owner_staff_management_screen.dart';
+import 'staff_workspace_shell.dart';
 import 'staff_client_registration_screen.dart';
 
 /// Separate staff experience; customer demo state is never reused.
@@ -95,6 +96,12 @@ class _StaffPortalState extends State<StaffPortal> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loading && _session != null) {
+      return StaffWorkspaceShell(
+        session: _session!, gateway: widget.gateway,
+        busy: _busy, error: _error, onLogout: _logout,
+      );
+    }
     const navy = Color(0xFF12233F);
     return Scaffold(
       appBar: AppBar(
