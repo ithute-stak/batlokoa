@@ -29,6 +29,8 @@ NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 class EmployeeLogin(BaseModel):
     phone: str = Field(min_length=8, max_length=30)
     password: str = Field(min_length=6, max_length=128)
+    otp: str | None = Field(default=None, min_length=6, max_length=8, pattern=r"^[0-9]{6,8}$")
+    recovery_code: str | None = Field(default=None, min_length=8, max_length=32)
 
 
 @dataclass
@@ -128,11 +130,15 @@ def staff_login(payload: EmployeeLogin, request: Request):
         return _response("STAFF_LOGIN_DISABLED", 503)
     if not _same_origin(request, cfg.public_origin):
         return _response("FORBIDDEN_ORIGIN", 403)
+    if payload.otp is not None and payload.recovery_code is not None:
+        return _response("LOGIN_FAILED", 401)
     try:
         def call(client: httpx.Client):
             return client.post(
                 cfg.loanhub_origin.rstrip("/") + "/api/v1/auth/login",
-                json={"phone": payload.phone.strip(), "password": payload.password},
+                json={"phone": payload.phone.strip(), "password": payload.password,
+                      **({"otp": payload.otp} if payload.otp else {}),
+                      **({"recovery_code": payload.recovery_code} if payload.recovery_code else {})},
                 headers={"Accept": "application/json", "Cache-Control": "no-store"},
                 timeout=5, follow_redirects=False,
             )
