@@ -36,7 +36,7 @@ async def registration_readiness(request: Request):
 
     # The upstream availability response is informational even if it
     # eventually changes; never infer write authorization from this endpoint.
-    url = config.loanhub_origin.rstrip("/") + "/batlokoa/registration/availability"
+    url = config.loanhub_origin.rstrip("/") + "/api/v1/batlokoa/registration/availability"
     try:
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=5.0) as client:
             response = client.get(
