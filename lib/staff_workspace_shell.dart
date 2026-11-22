@@ -84,9 +84,10 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
           begin: Alignment.topLeft, end: Alignment.bottomRight)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Row(children: [
-          BfsPill(label: 'CONNECTED TO LOANHUB',
-            color: Colors.white, background: Color(0xFF345475)),
-          Spacer(),
+          Flexible(child: Align(alignment: Alignment.centerLeft,
+            child: BfsPill(label: 'CONNECTED TO LOANHUB',
+              color: Colors.white, background: Color(0xFF345475)))),
+          SizedBox(width: 8),
           Icon(Icons.shield_outlined, color: Colors.white70),
         ]),
         const SizedBox(height: 27),
@@ -201,8 +202,9 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
       const Row(children: [
         Icon(Icons.verified_user_rounded, color: BatlokoaDesign.accent),
         SizedBox(width: 10),
-        Text('Verified LoanHub access', style: TextStyle(fontSize: 16,
-          fontWeight: FontWeight.w800, color: BatlokoaDesign.navy)),
+        Expanded(child: Text('Verified LoanHub access',
+          softWrap: true, style: TextStyle(fontSize: 16,
+            fontWeight: FontWeight.w800, color: BatlokoaDesign.navy))),
       ]),
       const SizedBox(height: 17),
       Text('Role', style: Theme.of(context).textTheme.labelMedium),
