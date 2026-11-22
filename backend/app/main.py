@@ -16,6 +16,7 @@ from .employee_pilot_bootstrap import configure_employee_pilot
 from .staff_clients_routes import router as staff_clients_router
 from .owner_staff_management_routes import router as owner_staff_management_router
 from .staff_registration_preflight_routes import router as staff_registration_preflight_router
+from .staff_registration_readiness_routes import router as staff_registration_readiness_router
 from .staff_national_id_check_routes import router as staff_national_id_check_router
 from .staff_registration_release_routes import router as staff_registration_release_router
 from fastapi.responses import JSONResponse
@@ -87,6 +88,7 @@ app.include_router(owner_staff_management_router)
 
 # Local validation only; no borrower or loan write route is activated.
 app.include_router(staff_registration_preflight_router)
+app.include_router(staff_registration_readiness_router)
 
 # Independent read-only national-ID registration check; never creates clients.
 app.include_router(staff_national_id_check_router)
