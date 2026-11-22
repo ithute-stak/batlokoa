@@ -129,12 +129,51 @@ class _StaffClientRegistrationScreenState
         return;
       }
     }
-    if (_step < 4) setState(() {
-      _step++;
-      _review = false;
-      _serverResult = null;
-    });
+    if (_step < 4) {
+      final openingReview = _step == 3;
+      setState(() {
+        _step++;
+        _review = false;
+        _serverResult = null;
+      });
+      if (openingReview) _fetchReadiness();
+    }
   }
+
+  Future<void> _fetchReadiness() async {
+    if (_readinessLoading || _readinessChecked) return;
+    if (widget.gateway is! StaffRegistrationReadinessGateway) {
+      setState(() {
+        _readinessChecked = true;
+        _readinessMessage = 'LoanHub release status is unavailable. '
+            'Client creation remains disabled.';
+      });
+      return;
+    }
+    setState(() => _readinessLoading = true);
+    try {
+      final result = await (widget.gateway as StaffRegistrationReadinessGateway)
+          .registrationReadiness();
+      if (!mounted) return;
+      setState(() {
+        _readinessChecked = true;
+        _readinessMessage = result.canCreateClient
+            ? 'Registration release requires a separate security review.'
+            : 'LoanHub confirms that new-client registration is not released. '
+              'Identity migration approval and an independent release '
+              'are required before submission can be enabled.';
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _readinessChecked = true;
+        _readinessMessage = 'LoanHub registration release status could not '
+            'be verified. Client submission remains disabled.';
+      });
+    } finally {
+      if (mounted) setState(() => _readinessLoading = false);
+    }
+  }
+
   Future<void> _checkNationalId() async {
     if (_checkingIdentity || _loadingBranches) return;
     final nationalId = _nationalId.text.trim();
@@ -272,6 +311,9 @@ class _StaffClientRegistrationScreenState
   bool _creditConsent = false;
   bool _review = false;
   bool _serverBusy = false;
+  bool _readinessLoading = false;
+  bool _readinessChecked = false;
+  String? _readinessMessage;
   String? _serverResult;
 
   @override
@@ -732,6 +774,24 @@ class _StaffClientRegistrationScreenState
               ],
             )),
           ],
+          const SizedBox(height: 16),
+          BfsPanel(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('LoanHub registration release status',
+                style: TextStyle(fontWeight: FontWeight.w800,
+                  color: BatlokoaDesign.navy)),
+              const SizedBox(height: 9),
+              if (_readinessLoading)
+                const LinearProgressIndicator(),
+              if (_readinessMessage != null)
+                Text(_readinessMessage!,
+                  key: const Key('register-release-readiness'),
+                  style: const TextStyle(height: 1.5)),
+              if (!_readinessLoading && _readinessMessage == null)
+                const Text('Release not confirmed. Client creation is disabled.'),
+            ],
+          )),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: null,
