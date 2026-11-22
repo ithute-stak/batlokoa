@@ -129,8 +129,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.byType(OwnerStaffRegistrationScreen), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('staff-first-name')),
+        150,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byKey(const Key('staff-first-name')), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('staff-role')),
+        160,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byKey(const Key('staff-role')), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   }
 }
