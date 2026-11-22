@@ -170,6 +170,7 @@ def staff_login(payload: EmployeeLogin, request: Request):
             "role": identity.role,
             "company_id": str(identity.company_id),
             "branch_ids": sorted(map(str, identity.branch_ids)),
+            "company_wide_scope": identity.company_wide_scope,
         }, headers=NO_STORE)
         response.set_cookie(COOKIE, session, secure=True, httponly=True,
                             samesite="strict", path="/", max_age=ttl)
