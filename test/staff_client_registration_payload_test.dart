@@ -4,6 +4,7 @@ import 'package:batlokoa/staff_client_registration_payload.dart';
 Map<String, dynamic> build({
   bool loans = false,
   String bank = '',
+  bool orphanBank = false,
   List<Map<String, String>> debts = const [],
 }) => buildNewClientRegistrationPayload(
   branchId: '123e4567-e89b-42d3-a456-426614174111',
@@ -22,8 +23,8 @@ Map<String, dynamic> build({
     'physical_address': 'Synthetic address',
     'income_day': '25',
     'existing_loan_total': '500.00',
-    if (bank.isNotEmpty) 'bank_account_holder': 'Synthetic Client',
-    if (bank.isNotEmpty) 'bank_account_number': '1234567890',
+    if (bank.isNotEmpty || orphanBank) 'bank_account_holder': 'Synthetic Client',
+    if (bank.isNotEmpty || orphanBank) 'bank_account_number': '1234567890',
     'town_or_village': 'Maseru West',
   },
   choices: {
@@ -73,6 +74,10 @@ void main() {
     expect(bank['bank_name'], 'NB');
     expect(bank['account_number'], '1234567890');
     expect(bank['salary_account'], true);
+  });
+
+  test('cleared bank selection cannot silently omit entered account details', () {
+    expect(() => build(orphanBank: true), throwsFormatException);
   });
 
   test('invalid bank and contradictory debt capture cannot be silently dropped', () {
