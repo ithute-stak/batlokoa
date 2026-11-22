@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'staff_gateway.dart';
+import 'batlokoa_design.dart';
+import 'bfs_widgets.dart';
 
 /// Employee-only, read-only directory; no registration or loan writer here.
 class StaffClientDirectoryScreen extends StatefulWidget {
@@ -79,15 +81,15 @@ class _StaffClientDirectoryScreenState extends State<StaffClientDirectoryScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Find clients')),
+    appBar: AppBar(title: const Text('Find clients'),
+      backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760),
       child: ListView(padding: const EdgeInsets.all(20), children: [
-        Text('Authorized client directory',
-            style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 6),
-        const Text('Read-only LoanHub records for your verified company and branch.'),
-        const SizedBox(height: 16),
+        const BfsSectionTitle(eyebrow: 'CUSTOMER SEARCH',
+          title: 'Authorized client directory',
+          subtitle: 'Find and review clients using live LoanHub records.'),
+        const SizedBox(height: 22),
         TextField(
           key: const Key('staff-client-search'),
           controller: _search,
@@ -144,28 +146,56 @@ class _StaffClientDirectoryScreenState extends State<StaffClientDirectoryScreen>
           )),
         if (!_busy && _error == null)
           for (final client in _clients)
-            Card(child: ListTile(
-              key: Key('staff-client-${client.accountId}'),
-              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-              title: Text(client.fullName),
-              subtitle: Text(
-                  '${client.accountReference} · ${client.status}'),
-              trailing: const Icon(Icons.visibility_outlined),
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  title: Text(client.fullName),
-                  content: Text(
-                    'Account: ${client.accountReference}\n'
-                    'Status: ${client.status}\n'
-                    'Loan applications and registration writes are not enabled.'),
-                  actions: [TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Close'),
-                  )],
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                key: Key('staff-client-${client.accountId}'),
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: const BorderSide(color: Color(0xFFE2E7EE))),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: Text(client.fullName),
+                      content: Text(
+                        'Account: ${client.accountReference}\n'
+                        'Status: ${client.status}\n'
+                        'Loan applications and registration writes are not enabled.'),
+                      actions: [TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('Close'))])),
+                  child: Padding(padding: const EdgeInsets.all(16),
+                    child: Row(children: [
+                      const CircleAvatar(radius: 25,
+                        backgroundColor: Color(0xFFEAF1FF),
+                        child: Icon(Icons.person_outline_rounded,
+                          color: BatlokoaDesign.accent)),
+                      const SizedBox(width: 13),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(client.fullName, maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: BatlokoaDesign.navy)),
+                          const SizedBox(height: 5),
+                          Text(client.accountReference, maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12,
+                              color: BatlokoaDesign.silver)),
+                          const SizedBox(height: 9),
+                          BfsPill(label: client.status),
+                        ])),
+                      const Icon(Icons.arrow_forward_ios_rounded,
+                        size: 15, color: BatlokoaDesign.silver),
+                    ])),
                 ),
               ),
-            )),
+            ),
       ]),
     ))),
   );
