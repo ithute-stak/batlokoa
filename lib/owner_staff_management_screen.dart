@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
+import 'bfs_widgets.dart';
 import 'staff_gateway.dart';
 import 'owner_staff_registration_screen.dart';
 
-/// One focused screen: owner staff roster. Registration is a separate route.
+/// Dedicated, role-scoped staff directory; account creation is another screen.
 class OwnerStaffManagementScreen extends StatefulWidget {
   final StaffSession staff;
   final OwnerStaffManagementGateway gateway;
@@ -18,7 +19,6 @@ class _OwnerStaffManagementState extends State<OwnerStaffManagementScreen> {
   bool loading = true;
   String? error;
   List<Map<String, dynamic>> members = const [];
-
   @override
   void initState() { super.initState(); refresh(); }
 
@@ -39,79 +39,103 @@ class _OwnerStaffManagementState extends State<OwnerStaffManagementScreen> {
     }
   }
 
-  void openRegistration() async {
+  Future<void> openRegistration() async {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
       OwnerStaffRegistrationScreen(staff: widget.staff, gateway: widget.gateway)));
     if (mounted) refresh();
   }
 
+  Widget personRow(Map<String, dynamic> person) {
+    final name = (person['name'] ?? 'Employee').toString().trim();
+    final role = (person['role'] ?? 'Staff').toString().replaceAll('_', ' ');
+    final verified = person['verified'] == true;
+    final active = person['active'] == true;
+    final initials = name.split(RegExp(r'\s+')).where((word) => word.isNotEmpty)
+        .take(2).map((word) => word.substring(0, 1).toUpperCase()).join();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: BfsPanel(child: Row(children: [
+        CircleAvatar(
+          radius: 25, backgroundColor: const Color(0xFFEAF1FF),
+          child: Text(initials.isEmpty ? 'B' : initials, style: const TextStyle(
+            color: BatlokoaDesign.navy, fontWeight: FontWeight.w800, fontSize: 15))),
+        const SizedBox(width: 13),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800,
+              color: BatlokoaDesign.navy, fontSize: 15)),
+          const SizedBox(height: 3),
+          Text(role, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: BatlokoaDesign.silver)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            BfsPill(label: active ? 'Active' : 'Inactive',
+              color: active ? const Color(0xFF087B65) : BatlokoaDesign.silver,
+              background: active ? const Color(0xFFE7F8F2)
+                : const Color(0xFFF2F3F5)),
+            BfsPill(label: verified ? 'Verified' : 'Pending verification',
+              color: verified ? BatlokoaDesign.accent : const Color(0xFF955B00),
+              background: verified ? const Color(0xFFECF3FF)
+                : const Color(0xFFFFF2D9)),
+          ]),
+        ])),
+      ])),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Employees'),
-      backgroundColor: BatlokoaDesign.navy,
-      foregroundColor: Colors.white,
-    ),
+    appBar: AppBar(title: const Text('Employees'),
+      backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 740),
-      child: ListView(padding: const EdgeInsets.all(18), children: [
-        const Text('Your team', style: TextStyle(
-          fontSize: 27, color: BatlokoaDesign.navy,
-          fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
-        const Text('Staff access and branch assignments are managed through LoanHub.',
-          style: TextStyle(color: BatlokoaDesign.secondaryInk)),
-        const SizedBox(height: 20),
-        Card(
-          child: Padding(padding: const EdgeInsets.all(16),
-            child: Row(children: [
-              const Icon(Icons.groups_2_outlined, color: BatlokoaDesign.accent, size: 32),
-              const SizedBox(width: 14),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Existing staff (' + members.length.toString() + ')',
-                  style: const TextStyle(fontWeight: FontWeight.w800,
-                    fontSize: 17, color: BatlokoaDesign.navy)),
-                const Text('Review employees and verified status',
-                  style: TextStyle(color: BatlokoaDesign.silver, fontSize: 12)),
+      child: ListView(padding: const EdgeInsets.all(20), children: [
+        const BfsSectionTitle(eyebrow: 'PEOPLE & PERMISSIONS',
+          title: 'Your team',
+          subtitle: 'View employees securely across your Batlokoa branches.'),
+        const SizedBox(height: 23),
+        Container(padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: BatlokoaDesign.navy,
+            borderRadius: BorderRadius.circular(21)),
+          child: Row(children: [
+            const Icon(Icons.groups_2_rounded, color: Colors.white, size: 35),
+            const SizedBox(width: 17),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(members.length.toString(), style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 32)),
+                const Text('EMPLOYEES', style: TextStyle(
+                  fontSize: 11, color: Color(0xFFCFDCEB), letterSpacing: 1.1)),
               ])),
-            ])),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
+          ])),
+        const SizedBox(height: 17),
+        SizedBox(height: 52, child: FilledButton.icon(
           key: const Key('owner-open-register-staff'),
           onPressed: loading || error != null ? null : openRegistration,
-          icon: const Icon(Icons.person_add_alt_1_outlined),
-          label: const Text('Register employee')),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: loading ? null : refresh,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Refresh staff')),
-        if (loading) const Padding(padding: EdgeInsets.all(18),
-          child: Center(child: CircularProgressIndicator())),
-        if (error != null) Padding(padding: const EdgeInsets.all(14),
-          child: Text(error!, key: const Key('owner-staff-error'),
-            style: const TextStyle(color: BatlokoaDesign.primary))),
-        const SizedBox(height: 16),
+          icon: const Icon(Icons.person_add_alt_1_rounded),
+          label: const Text('Register employee'))),
+        const SizedBox(height: 22),
+        Row(children: [
+          const Expanded(child: Text('Employee directory', style: TextStyle(
+            fontSize: 18, fontWeight: FontWeight.w800,
+            color: BatlokoaDesign.navy))),
+          IconButton(onPressed: loading ? null : refresh,
+            tooltip: 'Refresh employees', icon: const Icon(Icons.refresh_rounded)),
+        ]),
+        const SizedBox(height: 12),
+        if (loading) const Center(child: Padding(
+          padding: EdgeInsets.all(25), child: CircularProgressIndicator())),
+        if (error != null) BfsPanel(child: Text(error!,
+          key: const Key('owner-staff-error'),
+          style: const TextStyle(color: BatlokoaDesign.primary))),
         if (!loading && error == null && members.isEmpty)
-          const Card(child: Padding(padding: EdgeInsets.all(20),
-            child: Text('No employees returned from your authorized directory.'))),
+          const BfsPanel(child: Text('No employees returned from your authorized directory.')),
         if (!loading && error == null)
-          for (final person in members)
-            Card(child: ListTile(
-              leading: const CircleAvatar(backgroundColor: Color(0xFFFFEBED),
-                child: Icon(Icons.badge_outlined, color: BatlokoaDesign.primary)),
-              title: Text((person['name'] ?? 'Employee').toString(),
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(
-                (person['role'] ?? 'Staff').toString().replaceAll('_',' ') +
-                ' · ' + (person['active'] == true ? 'Active' : 'Inactive') +
-                ' · ' + (person['verified'] == true ? 'Verified' : 'Pending verification')),
-            )),
-        const SizedBox(height: 18),
-        const Text('New staff accounts require an independent release approval '
-          'and LoanHub verification before sign-in.',
-          style: TextStyle(fontSize: 12, color: BatlokoaDesign.secondaryInk)),
+          for (final person in members) personRow(person),
+        const SizedBox(height: 12),
+        const Text('Staff registration and account verification are '
+          'controlled by LoanHub.', style: TextStyle(
+            fontSize: 12, color: BatlokoaDesign.silver, height: 1.5)),
       ]),
     ))),
   );
