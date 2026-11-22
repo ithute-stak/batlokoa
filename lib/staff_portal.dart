@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'batlokoa_logo.dart';
 import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'staff_client_registration_screen.dart';
@@ -81,7 +82,7 @@ class _StaffPortalState extends State<StaffPortal> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Batlokoa Staff'),
+    appBar: AppBar(title: const Row(children: [BatlokoaLogo(size: 36), SizedBox(width: 10), Expanded(child: Text('Batlokoa Staff'))]),
         leading: const BackButton()),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 650),
@@ -97,12 +98,12 @@ class _StaffPortalState extends State<StaffPortal> {
   Widget _signIn(BuildContext context) => Form(
     key: _form,
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const Icon(Icons.badge_outlined, size: 60),
+      const Center(child: BatlokoaLogo(size: 96)),
       const SizedBox(height: 16),
       Text('Employee sign in',
           style: Theme.of(context).textTheme.headlineMedium),
       const SizedBox(height: 6),
-      const Text('Use your existing LoanHub employee account. '
+      const Text('Batlokoa Financial Services — use your existing LoanHub employee account. '
           'Branch and permissions are verified automatically.'),
       const SizedBox(height: 24),
       TextFormField(
@@ -152,7 +153,7 @@ class _StaffPortalState extends State<StaffPortal> {
   Widget _dashboard(BuildContext context, StaffSession session) =>
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          const CircleAvatar(child: Icon(Icons.person_outline)),
+          const BatlokoaLogo(size: 48),
           const SizedBox(width: 12),
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

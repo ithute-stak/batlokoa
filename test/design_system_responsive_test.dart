@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Provisional theme uses centralized tokens', () {
+  test('BFS theme uses centralized tokens', () {
     final theme = BatlokoaDesign.theme();
     expect(theme.useMaterial3, isTrue);
     expect(theme.scaffoldBackgroundColor, BatlokoaDesign.canvas);
@@ -27,7 +27,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const BatlokoaApp());
-    expect(find.text('Batlokoa Finance'), findsOneWidget);
+    expect(find.text('Batlokoa Financial Services'), findsOneWidget);
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
 

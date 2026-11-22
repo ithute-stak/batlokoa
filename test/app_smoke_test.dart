@@ -11,7 +11,7 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     await tester.pumpWidget(const BatlokoaApp());
-    expect(find.text('Batlokoa Finance'), findsOneWidget);
+    expect(find.text('Batlokoa Financial Services'), findsOneWidget);
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     expect(find.text('My active loan'), findsOneWidget);

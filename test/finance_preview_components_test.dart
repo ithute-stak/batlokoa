@@ -44,6 +44,8 @@ void main() {
   testWidgets('Home and wallet show separate fictional balance cards',
       (tester) async {
     await tester.pumpWidget(const BatlokoaApp());
+    await tester.ensureVisible(find.text('Explore demo'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     expect(find.byType(DemoBalanceCard), findsOneWidget);
