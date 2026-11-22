@@ -118,6 +118,11 @@ void main() {
         OwnerStaffManagementScreen(staff: owner, gateway: gateway), 1.6));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(
+        find.text('Synthetic Mobile Employee'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Synthetic Mobile Employee'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('owner-open-register-staff')));
       await tester.tap(find.byKey(const Key('owner-open-register-staff')));
