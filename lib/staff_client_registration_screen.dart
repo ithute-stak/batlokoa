@@ -22,7 +22,12 @@ class _StaffClientRegistrationScreenState
     extends State<StaffClientRegistrationScreen> {
   final _form = GlobalKey<FormState>();
   // One active stage is built at a time; values remain in memory until exit.
-  int _step = 0;
+  int _step = -1;
+  bool _identityChecked = false;
+  bool _checkingIdentity = false;
+  String? _identityMessage;
+  String? _checkedNationalId;
+  String? _checkedBranch;
   static const _steps = [
     'Personal details', 'Identity and address', 'Employment and loans',
     'Banking details', 'Consent and review',
@@ -84,6 +89,23 @@ class _StaffClientRegistrationScreenState
     );
   }
   void _nextStep() {
+    if (_step == -1) {
+      if (!_identityChecked ||
+          _checkedNationalId != _nationalId.text.trim() ||
+          _checkedBranch != _branch) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Check the National ID with LoanHub before continuing.')));
+        return;
+      }
+      setState(() => _step = 0);
+      return;
+    }
+    if (!_identityChecked ||
+        _checkedNationalId != _nationalId.text.trim() ||
+        _checkedBranch != _branch) {
+      setState(() => _step = -1);
+      return;
+    }
     if (_form.currentState?.validate() != true) return;
     if (_step == 0 && _branch == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -111,6 +133,70 @@ class _StaffClientRegistrationScreenState
       _serverResult = null;
     });
   }
+  Future<void> _checkNationalId() async {
+    if (_checkingIdentity || _loadingBranches) return;
+    final nationalId = _nationalId.text.trim();
+    final branchId = _branch;
+    if (nationalId.length < 4 || nationalId.length > 100 || branchId == null) {
+      setState(() {
+        _identityChecked = false;
+        _identityMessage = 'Enter a valid National ID and select the branch.';
+      });
+      return;
+    }
+    if (widget.gateway is! StaffNationalIdGateway) {
+      setState(() {
+        _identityChecked = false;
+        _identityMessage = 'Identity screening is not available. Registration cannot continue.';
+      });
+      return;
+    }
+    setState(() {
+      _checkingIdentity = true;
+      _identityChecked = false;
+      _identityMessage = null;
+    });
+    try {
+      final result = await (widget.gateway as StaffNationalIdGateway)
+          .checkNationalId(nationalId: nationalId, branchId: branchId);
+      if (!mounted) return;
+      if (_nationalId.text.trim() != nationalId || _branch != branchId) {
+        setState(() { _identityMessage = 'The ID or branch changed. Check again.'; });
+        return;
+      }
+      setState(() {
+        _identityChecked = result.mayContinuePreparation;
+        _checkedNationalId = result.mayContinuePreparation ? nationalId : null;
+        _checkedBranch = result.mayContinuePreparation ? branchId : null;
+        _identityMessage = result.mayContinuePreparation
+            ? 'No matching identity was returned in this review. You may prepare '
+              'the details, but final duplicate checks and client approval are still required.'
+            : 'A possible existing identity or legacy record needs manual review. '
+              'Do not create a duplicate client. Use Find clients or ask an authorized '
+              'LoanHub administrator to investigate.';
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _identityChecked = false;
+        _identityMessage = 'Identity screening could not be completed. '
+            'No registration may proceed until the check succeeds.';
+      });
+    } finally {
+      if (mounted) setState(() => _checkingIdentity = false);
+    }
+  }
+
+  void _identityEdited() {
+    if (_identityChecked || _identityMessage != null) {
+      setState(() {
+        _identityChecked = false;
+        _checkedNationalId = null;
+        _checkedBranch = null;
+        _identityMessage = null;
+      });
+    }
+  }
+
   bool _loadingBranches = false;
   List<Map<String, String>> _availableBranches = const [];
   TextEditingController _x(String key) =>
@@ -341,7 +427,9 @@ class _StaffClientRegistrationScreenState
         border: const OutlineInputBorder(),
       ),
       validator: validate,
-      onChanged: (_) { if (_review) setState(() {
+      onChanged: (_) {
+        if (controller == _nationalId) _identityEdited();
+        if (_review) setState(() {
         _review = false; _serverResult = null;
       }); },
     ),
