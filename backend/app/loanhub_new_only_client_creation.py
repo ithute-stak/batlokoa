@@ -28,13 +28,13 @@ class ClientCreationUnavailable(RuntimeError):
 @dataclass(frozen=True)
 class CreatedClient:
     account_id: UUID
-    replayed: StrictBool
+    replayed: bool
 
 
 class NewClientReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
     client_account_id: UUID
-    replayed: bool
+    replayed: StrictBool
 
 
 def post_new_only_client(
