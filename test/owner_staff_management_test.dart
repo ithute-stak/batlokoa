@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:batlokoa/staff_gateway.dart';
 import 'package:batlokoa/owner_staff_management_screen.dart';
+import 'package:batlokoa/owner_staff_registration_screen.dart';
 
 class FakeOwnerGateway implements OwnerStaffManagementGateway {
   int createCalls = 0;
@@ -30,8 +31,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(home:
       OwnerStaffManagementScreen(staff: owner, gateway: gateway)));
     await tester.pumpAndSettle();
-    expect(find.text('Batlokoa employees'), findsOneWidget);
+    expect(find.text('Your team'), findsOneWidget);
     expect(find.text('Synthetic Employee'), findsOneWidget);
+    expect(find.byKey(const Key('owner-open-register-staff')), findsOneWidget);
+    expect(find.byKey(const Key('owner-create-staff')), findsNothing);
+    await tester.tap(find.byKey(const Key('owner-open-register-staff')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OwnerStaffRegistrationScreen), findsOneWidget);
     expect(find.byKey(const Key('owner-create-staff')), findsOneWidget);
     expect(gateway.createCalls, 0);
   });

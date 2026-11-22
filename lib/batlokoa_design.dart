@@ -40,6 +40,17 @@ abstract final class BatlokoaDesign {
       useMaterial3: true,
       scaffoldBackgroundColor: canvas,
       colorScheme: scheme,
+      visualDensity: VisualDensity.standard,
+      dividerTheme: const DividerThemeData(color: border, thickness: 1),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: border),
+        ),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: surface,
         foregroundColor: navy,
@@ -61,6 +72,15 @@ abstract final class BatlokoaDesign {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
+        floatingLabelStyle: const TextStyle(color: accent, fontWeight: FontWeight.w700),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: accent, width: 1.7),
+          borderRadius: BorderRadius.circular(fieldRadius),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: border),
+          borderRadius: BorderRadius.circular(fieldRadius),
+        ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16, vertical: 15,
         ),
@@ -70,7 +90,10 @@ abstract final class BatlokoaDesign {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(48, minTapHeight),
+          minimumSize: const Size(48, 52),
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(buttonRadius),
           ),
@@ -86,8 +109,12 @@ abstract final class BatlokoaDesign {
       ),
       navigationBarTheme: const NavigationBarThemeData(
         height: 76,
+        elevation: 0,
         backgroundColor: surface,
         indicatorColor: Color(0xFFFFE5E7),
+        labelTextStyle: WidgetStatePropertyAll(TextStyle(
+          fontSize: 11, fontWeight: FontWeight.w700, color: navy)),
+        iconTheme: WidgetStatePropertyAll(IconThemeData(color: navy)),
       ),
       navigationRailTheme: const NavigationRailThemeData(
         backgroundColor: surface,
