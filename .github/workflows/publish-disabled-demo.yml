@@ -1,4 +1,4 @@
-# Controlled disabled-demo image publication trigger: 2026-11-22 BFS separate-screen redesign and staff bottom navigation.
+# Controlled disabled-demo image publication trigger: 2026-11-22 premium BFS custom widgets and improved people screens.
 name: Publish Batlokoa disabled-demo Docker images
 
 on:
