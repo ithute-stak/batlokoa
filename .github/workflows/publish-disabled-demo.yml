@@ -1,4 +1,4 @@
-# Controlled disabled-demo image publication trigger: 2026-11-22 responsive staff application and accessibility layout fixes.
+# Controlled disabled-demo image publication trigger: 2026-11-22 LoanHub parity five-step client registration wizard; writes remain disabled.
 name: Publish Batlokoa disabled-demo Docker images
 
 on:
