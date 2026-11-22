@@ -24,6 +24,8 @@ void main() {
   testWidgets('Home, Loans, Wallet, Pay bills and Profile display demo notice',
       (tester) async {
     await tester.pumpWidget(const BatlokoaApp());
+    await tester.ensureVisible(find.text('Explore demo'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore demo'));
     await tester.pumpAndSettle();
     expect(find.textContaining('DEMO PREVIEW'), findsOneWidget);
