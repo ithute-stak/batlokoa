@@ -74,6 +74,15 @@ def configure_employee_pilot(app: FastAPI) -> bool:
         store=StagingStaffSessionStore(max_sessions=100),
     )
     app.state.staff_login_config = config
+    # Staff account creation is a distinct privileged release: default off.
+    # The existing unverified-owner read-only pilot is never sufficient to
+    # create an account; owner_create_member independently re-verifies the
+    # owner with allow_unverified_company_owner=False.
+    app.state.staff_account_creation_enabled = (
+        os.environ.get("BATLOKOA_STAFF_CREATION_MODE") == "verified_owner_reviewed"
+        and os.environ.get("BATLOKOA_STAFF_CREATION_ACK")
+            == "OWNER_VERIFIED_CSRF_LOANHUB_ACCOUNT_CREATION"
+    )
     # Read-only directory has a second independent, explicit activation flag.
     if os.environ.get("BATLOKOA_EMPLOYEE_READONLY_DIRECTORY", "") == "true":
         app.state.staff_client_directory = LoanHubStaffClientDirectory(
