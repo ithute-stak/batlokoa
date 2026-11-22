@@ -60,4 +60,21 @@ void main() {
     expect(find.byKey(const Key('staff-error')), findsOneWidget);
     expect(find.text('Employee workspace'), findsNothing);
   });
+  testWidgets('verified company owner receives owner workspace and company scope',
+      (tester) async {
+    final gateway = FakeStaffGateway(current: const StaffSession(
+      role: 'COMPANY_OWNER',
+      companyId: 'trusted-company',
+      branchIds: [],
+      companyWide: true,
+    ));
+    await tester.pumpWidget(MaterialApp(home: StaffPortal(gateway: gateway)));
+    await tester.pumpAndSettle();
+    expect(find.text('Company owner workspace'), findsOneWidget);
+    expect(find.text('Company-wide staff scope'), findsOneWidget);
+    expect(find.textContaining('Financial approvals and client creation are not enabled'),
+        findsOneWidget);
+    expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
+  });
+
 }
