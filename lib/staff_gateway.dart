@@ -203,7 +203,7 @@ class StaffNewClientReceipt {
 
 abstract class StaffNewClientCreationGateway {
   Future<StaffNewClientReceipt> createNewClient(
-    Map<String, dynamic> completePayload, {required String idempotencyKey},
+    Map<String, dynamic> completePayload, {required String idempotencyKey}
   );
 }
 
@@ -346,7 +346,7 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
 
   @override
   Future<StaffNewClientReceipt> createNewClient(
-    Map<String, dynamic> completePayload, {required String idempotencyKey},
+    Map<String, dynamic> completePayload, {required String idempotencyKey}
   ) async {
     final csrf = csrfToken?.call();
     if (csrf == null || csrf.isEmpty) {
