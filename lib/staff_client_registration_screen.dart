@@ -482,6 +482,10 @@ class _StaffClientRegistrationScreenState
   // The current LoanHub release is not approved. Keep this false until an
   // independently reviewed release supplies real server-side authorization.
   bool get _clientWritesReleased => false;
+  // Reuse a request key on retries; never make ambiguous network failures
+  // create a second borrower account.
+  final String _registrationRequestKey = 'batlokoa-' +
+      DateTime.now().microsecondsSinceEpoch.toString() + '-register';
   bool _savingClient = false;
   String? _clientSaveResult;
 
@@ -496,8 +500,7 @@ class _StaffClientRegistrationScreenState
       final payload = _completeRegistrationPayload();
       final receipt = await (widget.gateway as StaffNewClientCreationGateway)
           .createNewClient(payload,
-            idempotencyKey: 'batlokoa-' +
-                DateTime.now().microsecondsSinceEpoch.toString() + '-register');
+            idempotencyKey: _registrationRequestKey);
       if (!mounted) return;
       setState(() {
         _clientSaveResult = receipt.replayed
