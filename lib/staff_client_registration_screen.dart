@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
 import 'batlokoa_design.dart';
 import 'bfs_responsive.dart';
+import 'bfs_widgets.dart';
 
 /// Local-only assisted registration preparation. There are deliberately no
 /// POST calls, persistence, drafts in storage, or registration confirmations.
@@ -33,6 +34,82 @@ class _StaffClientRegistrationScreenState
   };
   bool _hasExistingLoans = false;
   bool _salaryAccount = false;
+  final _externalDebt = <Map<String, TextEditingController>>[];
+  void _addDebt() => setState(() => _externalDebt.add({
+    'creditor': TextEditingController(),
+    'current_balance': TextEditingController(),
+    'installment_amount': TextEditingController(),
+    'remaining_installments': TextEditingController(),
+  }));
+  Widget _debtItem(int index) {
+    final debt = _externalDebt[index];
+    Widget input(String key, String label) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        key: Key('register-debt-' + index.toString() + '-' + key),
+        controller: debt[key],
+        decoration: InputDecoration(labelText: label),
+        keyboardType: key == 'creditor' ? TextInputType.text
+            : const TextInputType.numberWithOptions(decimal: true),
+        validator: (v) {
+          final value = (v ?? '').trim();
+          if (value.isEmpty) return 'Required';
+          if (key == 'creditor') return value.length < 2 ? 'Enter lender name' : null;
+          return double.tryParse(value) == null || double.parse(value) < 0
+              ? 'Enter a valid non-negative number' : null;
+        },
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: BfsPanel(child: Column(children: [
+        Row(children: [
+          Expanded(child: Text('Existing debt ' + (index + 1).toString(),
+              style: const TextStyle(fontWeight: FontWeight.w800))),
+          IconButton(icon: const Icon(Icons.delete_outline),
+            tooltip: 'Remove debt',
+            onPressed: () => setState(() {
+              final removed = _externalDebt.removeAt(index);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                for (final c in removed.values) { c.dispose(); }
+              });
+            })),
+        ]),
+        input('creditor', 'Lender / creditor'),
+        input('current_balance', 'Outstanding balance'),
+        input('installment_amount', 'Monthly instalment'),
+        input('remaining_installments', 'Instalments remaining'),
+      ])),
+    );
+  }
+  void _nextStep() {
+    if (_form.currentState?.validate() != true) return;
+    if (_step == 0 && _branch == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select an authorized branch.')));
+      return;
+    }
+    if (_step == 1 &&
+        _nationalId.text.trim().isEmpty &&
+        _passport.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('National ID or passport is required.')));
+      return;
+    }
+    if (_step == 2 && _hasExistingLoans) {
+      final total = double.tryParse(_x('existing_loan_total').text) ?? 0;
+      if (total <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Existing loans require an outstanding balance.')));
+        return;
+      }
+    }
+    if (_step < 4) setState(() {
+      _step++;
+      _review = false;
+      _serverResult = null;
+    });
+  }
   bool _loadingBranches = false;
   List<Map<String, String>> _availableBranches = const [];
   TextEditingController _x(String key) =>
@@ -208,6 +285,9 @@ class _StaffClientRegistrationScreenState
       controller.dispose();
     }
     for (final controller in _extra.values) { controller.dispose(); }
+    for (final debt in _externalDebt) {
+      for (final controller in debt.values) { controller.dispose(); }
+    }
     super.dispose();
   }
 
