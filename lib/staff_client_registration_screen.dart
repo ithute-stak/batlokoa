@@ -22,7 +22,12 @@ class _StaffClientRegistrationScreenState
     extends State<StaffClientRegistrationScreen> {
   final _form = GlobalKey<FormState>();
   // One active stage is built at a time; values remain in memory until exit.
-  int _step = 0;
+  int _step = -1;
+  bool _identityChecked = false;
+  bool _checkingIdentity = false;
+  String? _identityMessage;
+  String? _checkedNationalId;
+  String? _checkedBranch;
   static const _steps = [
     'Personal details', 'Identity and address', 'Employment and loans',
     'Banking details', 'Consent and review',
@@ -84,6 +89,23 @@ class _StaffClientRegistrationScreenState
     );
   }
   void _nextStep() {
+    if (_step == -1) {
+      if (!_identityChecked ||
+          _checkedNationalId != _nationalId.text.trim() ||
+          _checkedBranch != _branch) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Check the National ID with LoanHub before continuing.')));
+        return;
+      }
+      setState(() => _step = 0);
+      return;
+    }
+    if (!_identityChecked ||
+        _checkedNationalId != _nationalId.text.trim() ||
+        _checkedBranch != _branch) {
+      setState(() => _step = -1);
+      return;
+    }
     if (_form.currentState?.validate() != true) return;
     if (_step == 0 && _branch == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -111,6 +133,70 @@ class _StaffClientRegistrationScreenState
       _serverResult = null;
     });
   }
+  Future<void> _checkNationalId() async {
+    if (_checkingIdentity || _loadingBranches) return;
+    final nationalId = _nationalId.text.trim();
+    final branchId = _branch;
+    if (nationalId.length < 4 || nationalId.length > 100 || branchId == null) {
+      setState(() {
+        _identityChecked = false;
+        _identityMessage = 'Enter a valid National ID and select the branch.';
+      });
+      return;
+    }
+    if (widget.gateway is! StaffNationalIdGateway) {
+      setState(() {
+        _identityChecked = false;
+        _identityMessage = 'Identity screening is not available. Registration cannot continue.';
+      });
+      return;
+    }
+    setState(() {
+      _checkingIdentity = true;
+      _identityChecked = false;
+      _identityMessage = null;
+    });
+    try {
+      final result = await (widget.gateway as StaffNationalIdGateway)
+          .checkNationalId(nationalId: nationalId, branchId: branchId);
+      if (!mounted) return;
+      if (_nationalId.text.trim() != nationalId || _branch != branchId) {
+        setState(() { _identityMessage = 'The ID or branch changed. Check again.'; });
+        return;
+      }
+      setState(() {
+        _identityChecked = result.mayContinuePreparation;
+        _checkedNationalId = result.mayContinuePreparation ? nationalId : null;
+        _checkedBranch = result.mayContinuePreparation ? branchId : null;
+        _identityMessage = result.mayContinuePreparation
+            ? 'No matching identity was returned in this review. You may prepare '
+              'the details, but final duplicate checks and client approval are still required.'
+            : 'A possible existing identity or legacy record needs manual review. '
+              'Do not create a duplicate client. Use Find clients or ask an authorized '
+              'LoanHub administrator to investigate.';
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _identityChecked = false;
+        _identityMessage = 'Identity screening could not be completed. '
+            'No registration may proceed until the check succeeds.';
+      });
+    } finally {
+      if (mounted) setState(() => _checkingIdentity = false);
+    }
+  }
+
+  void _identityEdited() {
+    if (_identityChecked || _identityMessage != null) {
+      setState(() {
+        _identityChecked = false;
+        _checkedNationalId = null;
+        _checkedBranch = null;
+        _identityMessage = null;
+      });
+    }
+  }
+
   bool _loadingBranches = false;
   List<Map<String, String>> _availableBranches = const [];
   TextEditingController _x(String key) =>
@@ -341,40 +427,91 @@ class _StaffClientRegistrationScreenState
         border: const OutlineInputBorder(),
       ),
       validator: validate,
-      onChanged: (_) { if (_review) setState(() {
+      onChanged: (_) {
+        if (controller == _nationalId) _identityEdited();
+        if (_review) setState(() {
         _review = false; _serverResult = null;
       }); },
     ),
   );
 
 
+  Widget _identityFirst() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const BfsPanel(child: Row(children: [
+        Icon(Icons.badge_outlined, color: BatlokoaDesign.primary),
+        SizedBox(width: 13),
+        Expanded(child: Text('Start by checking the client National ID '
+            'against existing and historical LoanHub records. '
+            'Do not collect other details until this check succeeds.',
+            style: TextStyle(height: 1.5))),
+      ])),
+      const SizedBox(height: 22),
+      _field('National ID', _nationalId, sensitive: true,
+          validate: (value) {
+            final id = (value ?? '').trim();
+            return id.length < 4 || id.length > 100
+                ? 'Enter a valid National ID (4–100 characters)' : null;
+          }),
+      if (_loadingBranches) const LinearProgressIndicator(),
+      if (!_loadingBranches && _availableBranches.isEmpty)
+        const BfsPanel(child: Text('An authorized registration branch is '
+            'required before checking the ID. Contact your administrator '
+            'if no branch is available.')),
+      if (_availableBranches.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(bottom: 15),
+          child: DropdownButtonFormField<String>(
+            key: const Key('register-branch'),
+            value: _branch != null &&
+                _availableBranches.any((b) => b['id'] == _branch)
+                    ? _branch : null,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Registration branch *'),
+            items: [
+              for (final b in _availableBranches)
+                DropdownMenuItem<String>(value: b['id'],
+                  child: Text(b['name']!, maxLines: 1,
+                      overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) {
+              setState(() => _branch = v);
+              _identityEdited();
+            },
+          )),
+      const SizedBox(height: 10),
+      SizedBox(height: 52, child: FilledButton.icon(
+        key: const Key('register-check-national-id'),
+        onPressed: _checkingIdentity || _loadingBranches ||
+                _availableBranches.isEmpty ? null : _checkNationalId,
+        icon: Icon(_checkingIdentity
+            ? Icons.hourglass_top_rounded : Icons.manage_search_rounded),
+        label: Text(_checkingIdentity ? 'Checking securely...' : 'Check National ID'),
+      )),
+      if (_identityMessage != null) Padding(
+        padding: const EdgeInsets.only(top: 17),
+        child: BfsPanel(child: Row(children: [
+          Icon(_identityChecked ? Icons.info_outline : Icons.shield_outlined,
+              color: _identityChecked
+                  ? BatlokoaDesign.accent : BatlokoaDesign.primary),
+          const SizedBox(width: 11),
+          Expanded(child: Text(_identityMessage!,
+            key: const Key('register-identity-result'),
+            style: const TextStyle(fontSize: 13, height: 1.5))),
+        ]))),
+      const SizedBox(height: 20),
+      const Text('An unmatched ID does not guarantee the client is new. '
+          'LoanHub must still verify the identity and approve any future '
+          'registration submission.',
+          style: TextStyle(fontSize: 12, color: BatlokoaDesign.secondaryInk)),
+    ],
+  );
+
   Widget _stage() {
+    if (_step == -1) return _identityFirst();
     switch (_step) {
       case 0:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (_loadingBranches) const LinearProgressIndicator(),
-          if (!_loadingBranches && _availableBranches.isEmpty)
-            const BfsPanel(child: Text('No authorized branch available. '
-                'Contact the company administrator to assign your branch.')),
-          if (_availableBranches.isNotEmpty)
-            Padding(padding: const EdgeInsets.only(bottom: 16),
-              child: DropdownButtonFormField<String>(
-                key: const Key('register-branch'),
-                value: _branch != null &&
-                    _availableBranches.any((b) => b['id'] == _branch)
-                        ? _branch : null,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Branch *'),
-                items: [
-                  for (final branch in _availableBranches)
-                    DropdownMenuItem<String>(
-                      value: branch['id'],
-                      child: Text(branch['name']!, maxLines: 1,
-                          overflow: TextOverflow.ellipsis)),
-                ],
-                onChanged: (v) => setState(() => _branch = v),
-                validator: (v) => v == null ? 'Select an authorized branch' : null,
-              )),
           _field('First name', _firstName, validate: _required),
           _extraField('middle_name', 'Middle name (optional)'),
           _field('Last name', _lastName, validate: _required),
@@ -390,7 +527,8 @@ class _StaffClientRegistrationScreenState
               {'male': 'Male', 'female': 'Female', 'other': 'Other'}),
           _field('Date of birth', _birthDate, validate: _validateDob,
               hint: 'YYYY-MM-DD'),
-          _field('National ID', _nationalId, sensitive: true),
+          const BfsPanel(child: Text('National ID checked on the first screen. '
+              'Return to the ID check to enter a different identity.')),
           _field('Passport number', _passport, sensitive: true),
           const Padding(padding: EdgeInsets.only(bottom: 15),
             child: Text('National ID or passport is required. Identity '
@@ -572,18 +710,20 @@ class _StaffClientRegistrationScreenState
         Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
-              Expanded(child: Text('Step ' + (_step + 1).toString() +
-                  ' of ' + _steps.length.toString(),
+              Expanded(child: Text('Step ' + (_step + 2).toString() +
+                  ' of ' + (_steps.length + 1).toString(),
                   style: const TextStyle(color: BatlokoaDesign.primary,
                       fontWeight: FontWeight.w800))),
               const BfsPill(label: 'PREPARATION ONLY'),
             ]),
             const SizedBox(height: 12),
-            LinearProgressIndicator(value: (_step + 1) / _steps.length,
+            LinearProgressIndicator(value: (_step + 2) / (_steps.length + 1),
                 minHeight: 5, borderRadius: BorderRadius.circular(8)),
             const SizedBox(height: 15),
-            BfsSectionTitle(title: _steps[_step],
-                subtitle: 'Same five-stage sequence as LoanHub staff registration.'),
+            BfsSectionTitle(title: _step == -1 ? 'Check National ID' : _steps[_step],
+                subtitle: _step == -1
+                  ? 'Check for an existing client before proceeding.'
+                  : 'LoanHub registration — one section at a time.'),
           ]),
         ),
         Expanded(child: Form(key: _form,
@@ -595,7 +735,7 @@ class _StaffClientRegistrationScreenState
         Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           child: Row(children: [
             Expanded(child: OutlinedButton.icon(
-              onPressed: _step == 0 || _serverBusy ? null
+              onPressed: _step == -1 || _serverBusy || _checkingIdentity ? null
                   : () => setState(() {
                       _step--; _review = false; _serverResult = null;
                     }),
@@ -606,9 +746,10 @@ class _StaffClientRegistrationScreenState
             Expanded(child: FilledButton.icon(
               key: const Key('register-continue'),
               onPressed: _step == 4 || _loadingBranches ||
-                  _serverBusy ? null : _nextStep,
+                  _serverBusy || _checkingIdentity ||
+                  (_step == -1 && !_identityChecked) ? null : _nextStep,
               icon: const Icon(Icons.chevron_right),
-              label: Text(_step == 3 ? 'Review' : 'Continue'),
+              label: Text(_step == -1 ? 'Continue' : _step == 3 ? 'Review' : 'Continue'),
             )),
           ]),
         ),

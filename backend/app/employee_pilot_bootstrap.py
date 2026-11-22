@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from .loanhub_staff_verifier import LoanHubStaffVerifier
 from .staff_login_routes import StaffLoginConfig, StagingStaffSessionStore
 from .loanhub_staff_clients import LoanHubStaffClientDirectory
+from .loanhub_registration_review import LoanHubRegistrationReview
 
 
 MODE = "limited_read_only"
@@ -89,4 +90,12 @@ def configure_employee_pilot(app: FastAPI) -> bool:
             origin=LOANHUB_ORIGIN,
         )
         app.state.staff_client_directory_enabled = True
+    # Independent read-only identity review; no client registration writes.
+    if os.environ.get("BATLOKOA_STAFF_NATIONAL_ID_CHECK") == "reviewed_read_only":
+        if os.environ.get("BATLOKOA_STAFF_NATIONAL_ID_CHECK_ACK") != "POST_BODY_CSRF_NO_CLIENT_WRITES":
+            raise ValueError("National ID review operator approval missing")
+        app.state.staff_registration_identity_review = LoanHubRegistrationReview(
+            origin=LOANHUB_ORIGIN
+        )
+        app.state.staff_registration_identity_review_enabled = True
     return True

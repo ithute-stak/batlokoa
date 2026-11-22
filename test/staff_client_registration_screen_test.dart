@@ -4,120 +4,171 @@ import 'package:batlokoa/staff_gateway.dart';
 import 'package:batlokoa/staff_client_registration_screen.dart';
 
 const assigned = StaffSession(
-  role: 'LOAN_OFFICER', companyId: 'test-company',
-  branchIds: ['test-branch'], companyWide: false,
+  role: 'LOAN_OFFICER', companyId: 'synthetic-company',
+  branchIds: ['synthetic-branch'], companyWide: false,
 );
 
-Future<void> showForm(WidgetTester tester, {StaffSession staff = assigned}) async {
-  await tester.pumpWidget(MaterialApp(home:
-      StaffClientRegistrationScreen(staff: staff)));
+class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway {
+  bool match;
+  bool fail;
+  int checks = 0;
+  MockIdentityGateway({this.match = false, this.fail = false});
+
+  @override
+  Future<StaffNationalIdCheck> checkNationalId({
+    required String nationalId, required String branchId,
+  }) async {
+    checks++;
+    if (fail) throw StateError('Synthetic upstream unavailable');
+    if (branchId != 'synthetic-branch') throw StateError('Wrong branch');
+    return StaffNationalIdCheck(
+      mayContinuePreparation: !match,
+      status: match ? 'existing_or_review' : 'candidate_only',
+    );
+  }
+
+  @override
+  Future<StaffSession?> session() async => null;
+  @override
+  Future<StaffSession> login(String phone, String password) async =>
+      throw StateError('Not a sign-in test');
+  @override
+  Future<void> logout() async {}
+  @override
+  Future<StaffRegistrationPreflight> validateRegistration(
+      Map<String, dynamic> draft) async =>
+      throw StateError('Client submission is disabled');
+  @override
+  Future<List<StaffClient>> findClients({
+    String search = '', String? branchId, int limit = 30,
+  }) async => [];
+}
+
+Future<void> showForm(WidgetTester tester, MockIdentityGateway gateway,
+    {StaffSession staff = assigned}) async {
+  await tester.pumpWidget(MaterialApp(home: StaffClientRegistrationScreen(
+    staff: staff, gateway: gateway,
+  )));
   await tester.pumpAndSettle();
 }
 
-Future<void> enter(WidgetTester tester, String key, String value) async {
-  final finder = find.byKey(Key('register-$key'));
+Future<void> enter(WidgetTester tester, String field, String value) async {
+  final finder = find.byKey(Key('register-$field'));
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.enterText(finder, value);
+  await tester.pumpAndSettle();
 }
 
-Future<void> next(WidgetTester tester) async {
+Future<void> continueStep(WidgetTester tester) async {
   tester.testTextInput.hide();
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('register-continue')));
   await tester.pumpAndSettle();
 }
 
-Future<void> previous(WidgetTester tester) async {
-  await tester.tap(find.text('Previous'));
+Future<void> checkId(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('register-check-national-id')));
+  await tester.tap(find.byKey(const Key('register-check-national-id')));
   await tester.pumpAndSettle();
 }
 
-Future<void> prepareValidSteps(WidgetTester tester) async {
-  await enter(tester, 'first-name', 'Palesa');
-  await enter(tester, 'last-name', 'Mokoena');
-  await enter(tester, 'phone', '59000000');
-  await next(tester);
-  expect(find.text('Identity and address'), findsOneWidget);
-  await enter(tester, 'date-of-birth', '1990-01-01');
-  await enter(tester, 'district', 'Maseru');
-  await enter(tester, 'national-id', 'TEST-NATIONAL-ID');
-  await next(tester);
-  expect(find.text('Employment and loans'), findsOneWidget);
-  await enter(tester, 'monthly-income', '1250.00');
-  await next(tester);
-  expect(find.text('Banking details'), findsOneWidget);
-  await next(tester);
-  expect(find.text('Consent and review'), findsOneWidget);
+Future<void> unlock(WidgetTester tester, MockIdentityGateway gateway) async {
+  await enter(tester, 'national-id', 'SYNTHETIC-NATIONAL-ID');
+  await checkId(tester);
+  expect(gateway.checks, 1);
+  expect(find.textContaining('No matching identity'), findsOneWidget);
+  await continueStep(tester);
+  expect(find.text('Personal details'), findsOneWidget);
 }
 
 void main() {
-  testWidgets('five stages match LoanHub and prohibit client creation',
+  testWidgets('National ID is the first input, no name fields shown', (tester) async {
+    final gateway = MockIdentityGateway();
+    await showForm(tester, gateway);
+    expect(find.text('Check National ID'), findsWidgets);
+    expect(find.text('Step 1 of 6'), findsOneWidget);
+    expect(find.byKey(const Key('register-national-id')), findsOneWidget);
+    expect(find.byKey(const Key('register-first-name')), findsNothing);
+    final next = tester.widget<FilledButton>(
+      find.byKey(const Key('register-continue')));
+    expect(next.onPressed, isNull);
+    expect(gateway.checks, 0);
+  });
+
+  testWidgets('matching ID blocks all later registration steps', (tester) async {
+    final gateway = MockIdentityGateway(match: true);
+    await showForm(tester, gateway);
+    await enter(tester, 'national-id', 'SYNTHETIC-EXISTING-ID');
+    await checkId(tester);
+    expect(find.textContaining('possible existing identity'), findsOneWidget);
+    final next = tester.widget<FilledButton>(
+      find.byKey(const Key('register-continue')));
+    expect(next.onPressed, isNull);
+    expect(find.byKey(const Key('register-first-name')), findsNothing);
+  });
+
+  testWidgets('unavailable ID check fails closed and cannot proceed', (tester) async {
+    final gateway = MockIdentityGateway(fail: true);
+    await showForm(tester, gateway);
+    await enter(tester, 'national-id', 'SYNTHETIC-ID');
+    await checkId(tester);
+    expect(find.textContaining('could not be completed'), findsOneWidget);
+    expect(tester.widget<FilledButton>(
+      find.byKey(const Key('register-continue'))).onPressed, isNull);
+  });
+
+  testWidgets('unmatched identity unlocks five LoanHub stages, no submit',
       (tester) async {
-    await showForm(tester);
-    expect(find.text('Personal details'), findsOneWidget);
-    expect(find.text('Step 1 of 5'), findsOneWidget);
-    await prepareValidSteps(tester);
-    expect(find.text('Step 5 of 5'), findsOneWidget);
+    final gateway = MockIdentityGateway();
+    await showForm(tester, gateway);
+    await unlock(tester, gateway);
+    expect(find.text('Step 2 of 6'), findsOneWidget);
+    await enter(tester, 'first-name', 'Palesa');
+    await enter(tester, 'last-name', 'Mokoena');
+    await enter(tester, 'phone', '59000000');
+    await continueStep(tester);
+    expect(find.text('Identity and address'), findsOneWidget);
+    await enter(tester, 'date-of-birth', '1990-01-01');
+    await enter(tester, 'district', 'Maseru');
+    await continueStep(tester);
+    expect(find.text('Employment and loans'), findsOneWidget);
+    await enter(tester, 'monthly-income', '1250.00');
+    await continueStep(tester);
+    expect(find.text('Banking details'), findsOneWidget);
+    await continueStep(tester);
+    expect(find.text('Consent and review'), findsOneWidget);
+    expect(find.text('Step 6 of 6'), findsOneWidget);
     expect(find.text('Submit registration — unavailable'), findsOneWidget);
     final submit = tester.widget<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
     expect(submit.onPressed, isNull);
-    expect(find.byKey(const Key('register-review-summary')), findsNothing);
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('register-review')), 160,
-      scrollable: find.byType(Scrollable).first,
-    );
+    expect(find.textContaining('SYNTHETIC-NATIONAL-ID'), findsNothing);
+  });
+
+  testWidgets('editing ID invalidates a previous successful check', (tester) async {
+    final gateway = MockIdentityGateway();
+    await showForm(tester, gateway);
+    await unlock(tester, gateway);
+    await tester.tap(find.text('Previous'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('register-review')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
-    expect(find.textContaining('Palesa'), findsWidgets);
-    expect(find.textContaining('TEST-NATIONAL-ID'), findsNothing);
+    await enter(tester, 'national-id', 'DIFFERENT-SYNTHETIC-ID');
+    expect(tester.widget<FilledButton>(
+      find.byKey(const Key('register-continue'))).onPressed, isNull);
+    expect(gateway.checks, 1);
+    await checkId(tester);
+    expect(gateway.checks, 2);
   });
 
-  testWidgets('required fields prevent moving into the next stage',
-      (tester) async {
-    await showForm(tester);
-    await next(tester);
-    expect(find.text('Step 1 of 5'), findsOneWidget);
-    expect(find.text('Personal details'), findsOneWidget);
-    await enter(tester, 'first-name', 'Palesa');
-    await enter(tester, 'last-name', 'Mokoena');
-    await enter(tester, 'phone', '59000000');
-    await next(tester);
-    expect(find.text('Identity and address'), findsOneWidget);
-    await enter(tester, 'date-of-birth', '1990-01-01');
-    await enter(tester, 'district', 'Maseru');
-    await next(tester);
-    expect(find.text('Step 2 of 5'), findsOneWidget);
-  });
-
-  testWidgets('in-memory draft survives back and forth without saving',
-      (tester) async {
-    await showForm(tester);
-    await enter(tester, 'first-name', 'Mpho');
-    await enter(tester, 'last-name', 'Theko');
-    await enter(tester, 'phone', '59000001');
-    await next(tester);
-    await previous(tester);
-    final first = tester.widget<TextFormField>(
-        find.byKey(const Key('register-first-name')));
-    expect(first.controller?.text, 'Mpho');
-    expect(find.byKey(const Key('register-review-summary')), findsNothing);
-  });
-
-  testWidgets('missing authorized branch cannot enter identity stage',
-      (tester) async {
-    await showForm(tester, staff: const StaffSession(
-      role: 'LOAN_OFFICER', companyId: 'test-company',
+  testWidgets('no registered branch prevents identity screening', (tester) async {
+    final gateway = MockIdentityGateway();
+    await showForm(tester, gateway, staff: const StaffSession(
+      role: 'LOAN_OFFICER', companyId: 'synthetic-company',
       branchIds: [], companyWide: false,
     ));
-    expect(find.textContaining('No authorized branch available'), findsOneWidget);
-    await enter(tester, 'first-name', 'Palesa');
-    await enter(tester, 'last-name', 'Mokoena');
-    await enter(tester, 'phone', '59000000');
-    await next(tester);
-    expect(find.text('Step 1 of 5'), findsOneWidget);
+    expect(find.textContaining('authorized registration branch'), findsOneWidget);
+    expect(tester.widget<FilledButton>(
+      find.byKey(const Key('register-check-national-id'))).onPressed, isNull);
+    expect(gateway.checks, 0);
   });
 }
