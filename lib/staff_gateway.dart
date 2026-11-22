@@ -119,6 +119,36 @@ abstract class StaffSecondFactorGateway {
   });
 }
 
+/// Independent server-side duplicate screening before any client form step.
+/// A no-match is only a candidate, never an authorization to create a client.
+class StaffNationalIdCheck {
+  final bool mayContinuePreparation;
+  final String status;
+  const StaffNationalIdCheck({
+    required this.mayContinuePreparation, required this.status,
+  });
+
+  factory StaffNationalIdCheck.fromJson(Map<String, dynamic> data) {
+    final status = data['status'];
+    final candidate = data['may_continue_preparation'];
+    if ((status != 'existing_or_review' && status != 'candidate_only') ||
+        candidate is! bool ||
+        candidate != (status == 'candidate_only') ||
+        data['registration_authorized'] != false ||
+        data['human_review_required'] != true) {
+      throw const FormatException('Untrusted identity review response');
+    }
+    return StaffNationalIdCheck(
+      mayContinuePreparation: candidate, status: status as String);
+  }
+}
+
+abstract class StaffNationalIdGateway {
+  Future<StaffNationalIdCheck> checkNationalId({
+    required String nationalId, required String branchId,
+  });
+}
+
 /// Owner-only staff management, separate from client registration.
 abstract class OwnerStaffManagementGateway {
   Future<List<Map<String, dynamic>>> ownerBranches();
@@ -153,7 +183,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -254,6 +284,43 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       clients.add(row);
     }
     return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
+  Future<StaffNationalIdCheck> checkNationalId({
+    required String nationalId, required String branchId,
+  }) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Identity check requires a secure staff session');
+    }
+    final trimmedId = nationalId.trim();
+    if (trimmedId.length < 4 || trimmedId.length > 100 ||
+        branchId.trim().isEmpty) {
+      throw ArgumentError('Valid national ID and authorized branch required');
+    }
+    // Never put national ID in a URL, query string, console or browser storage.
+    final response = await client.post(
+      _url('/api/v1/staff/clients/national-id-check'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      },
+      body: jsonEncode({
+        'national_id': trimmedId, 'branch_id': branchId,
+      }),
+    );
+    if (response.statusCode != 200 || response.bodyBytes.length > 2048) {
+      throw StateError('Identity screening unavailable or access denied');
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw const FormatException('Invalid identity screening response');
+    }
+    return StaffNationalIdCheck.fromJson(body);
   }
 
   @override
