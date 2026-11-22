@@ -162,3 +162,92 @@ def test_opt_in_without_trusted_session_configuration_stays_disabled():
     app.state.staff_client_directory_enabled = True
     app.state.staff_client_directory = LoanHubStaffClientDirectory(origin=LOANHUB)
     assert TestClient(app, base_url=ORIGIN).get("/api/v1/staff/clients").status_code == 503
+
+
+def test_company_owner_can_read_cross_branch_minimal_directory():
+    """The signed LoanHub company-owner role may read company-wide results."""
+    owner = VerifiedStaffIdentity(
+        user_id=EMPLOYEE, company_id=COMPANY, role="COMPANY_OWNER",
+        active=True, branch_ids=frozenset(), company_wide_scope=True,
+    )
+    records = [
+        {
+            "id": str(uuid4()), "company_id": str(COMPANY),
+            "branch_id": str(BRANCH), "full_name": "Synthetic Branch A",
+            "account_reference": "TEST-A", "status": "active",
+            "national_id": "PRIVATE-NATIONAL-ID-A",
+            "phone": "PRIVATE-PHONE-A",
+        },
+        {
+            "id": str(uuid4()), "company_id": str(COMPANY),
+            "branch_id": str(DIFFERENT_BRANCH), "full_name": "Synthetic Branch B",
+            "account_reference": "TEST-B", "status": "active",
+            "national_id": "PRIVATE-NATIONAL-ID-B",
+        },
+    ]
+    client, cookie, calls, upstream = enabled(identity=owner, records=records)
+    try:
+        client.cookies.set(COOKIE, cookie)
+        response = client.get("/api/v1/staff/clients", params={"limit": 30})
+        assert response.status_code == 200
+        summaries = response.json()["clients"]
+        assert len(summaries) == 2
+        assert {item["branch_id"] for item in summaries} == {
+            str(BRANCH), str(DIFFERENT_BRANCH),
+        }
+        assert {item["full_name"] for item in summaries} == {
+            "Synthetic Branch A", "Synthetic Branch B",
+        }
+        assert calls[0].headers["X-Company-ID"] == str(COMPANY)
+        assert calls[0].headers["X-Active-Role"] == "company_owner"
+        assert "branch_id" not in calls[0].url.params
+        assert "PRIVATE" not in response.text
+        assert all(set(item.keys()) == {
+            "account_id", "account_reference", "company_id",
+            "branch_id", "full_name", "status",
+        } for item in summaries)
+    finally:
+        upstream.close()
+
+
+def test_company_owner_cannot_read_records_from_other_companies():
+    owner = VerifiedStaffIdentity(
+        user_id=EMPLOYEE, company_id=COMPANY, role="COMPANY_OWNER",
+        active=True, branch_ids=frozenset(), company_wide_scope=True,
+    )
+    records = [{
+        "id": str(uuid4()), "company_id": str(uuid4()),
+        "branch_id": str(BRANCH), "full_name": "Wrong Company",
+        "account_reference": "CROSS-TENANT", "status": "active",
+    }]
+    client, cookie, calls, upstream = enabled(identity=owner, records=records)
+    try:
+        client.cookies.set(COOKIE, cookie)
+        result = client.get("/api/v1/staff/clients")
+        assert result.status_code == 503
+        assert result.json() == {"code": "CLIENT_DIRECTORY_UNAVAILABLE"}
+        assert "Wrong Company" not in result.text
+        assert len(calls) == 1
+    finally:
+        upstream.close()
+
+
+def test_company_owner_explicit_branch_filter_is_enforced_on_results():
+    owner = VerifiedStaffIdentity(
+        user_id=EMPLOYEE, company_id=COMPANY, role="COMPANY_OWNER",
+        active=True, branch_ids=frozenset(), company_wide_scope=True,
+    )
+    records = [{
+        "id": str(uuid4()), "company_id": str(COMPANY),
+        "branch_id": str(DIFFERENT_BRANCH), "full_name": "Wrong Branch",
+        "account_reference": "WRONG-BRANCH", "status": "active",
+    }]
+    client, cookie, calls, upstream = enabled(identity=owner, records=records)
+    try:
+        client.cookies.set(COOKIE, cookie)
+        result = client.get("/api/v1/staff/clients", params={"branch_id": str(BRANCH)})
+        assert result.status_code == 503
+        assert result.json() == {"code": "CLIENT_DIRECTORY_UNAVAILABLE"}
+        assert calls[0].url.params["branch_id"] == str(BRANCH)
+    finally:
+        upstream.close()
