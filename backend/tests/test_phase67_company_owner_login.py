@@ -87,6 +87,7 @@ def test_owner_login_needs_verified_active_batlokoa_membership(
                 assert "access_token" not in login.text
                 assert "synthetic-password" not in login.text
                 if expected == 200:
+                    assert login.json()["company_wide_scope"] is True
                     session = browser.get("/api/v1/staff/session")
                     assert session.status_code == 200
                     data = session.json()
