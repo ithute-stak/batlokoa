@@ -111,8 +111,11 @@ void main() {
         findsOneWidget);
     // A matched national ID sends the employee into the authorized,
     // read-only client directory rather than a second registration.
-    await tester.ensureVisible(
-        find.byKey(const Key('register-find-existing-client')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('register-find-existing-client')), 160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-find-existing-client')));
     await tester.pumpAndSettle();
     expect(find.byType(StaffClientDirectoryScreen), findsOneWidget);
