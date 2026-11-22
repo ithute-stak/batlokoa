@@ -17,6 +17,8 @@ class _StaffPortalState extends State<StaffPortal> {
   final _form = GlobalKey<FormState>();
   final _phone = TextEditingController();
   final _password = TextEditingController();
+  final _secondFactor = TextEditingController();
+  bool _useRecoveryCode = false;
   StaffSession? _session;
   bool _loading = true;
   bool _busy = false;
@@ -44,11 +46,20 @@ class _StaffPortalState extends State<StaffPortal> {
     if (!_form.currentState!.validate() || _busy) return;
     setState(() { _busy = true; _error = null; });
     try {
-      final session = await widget.gateway.login(
-          _phone.text.trim(), _password.text);
+      final enteredSecondFactor = _secondFactor.text.trim();
+      final session = widget.gateway is StaffSecondFactorGateway
+          ? await (widget.gateway as StaffSecondFactorGateway)
+              .loginWithSecondFactor(
+                  _phone.text.trim(), _password.text,
+                  otp: enteredSecondFactor.isNotEmpty && !_useRecoveryCode
+                      ? enteredSecondFactor : null,
+                  recoveryCode: enteredSecondFactor.isNotEmpty && _useRecoveryCode
+                      ? enteredSecondFactor : null)
+          : await widget.gateway.login(_phone.text.trim(), _password.text);
       if (mounted) {
         setState(() => _session = session);
         _password.clear();
+        _secondFactor.clear();
       }
     } catch (_) {
       if (mounted) {
@@ -77,6 +88,7 @@ class _StaffPortalState extends State<StaffPortal> {
   void dispose() {
     _phone.dispose();
     _password.dispose();
+    _secondFactor.dispose();
     super.dispose();
   }
 
@@ -131,6 +143,43 @@ class _StaffPortalState extends State<StaffPortal> {
                   ? Icons.visibility_outlined : Icons.visibility_off_outlined))),
         validator: (v) => (v == null || v.length < 6)
             ? 'Enter your password' : null,
+      ),
+      const SizedBox(height: 12),
+      TextFormField(
+        key: const Key('staff-second-factor'),
+        controller: _secondFactor,
+        obscureText: _useRecoveryCode,
+        keyboardType: _useRecoveryCode ? TextInputType.text : TextInputType.number,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(
+          labelText: _useRecoveryCode
+              ? 'Recovery code (if required)'
+              : 'Authenticator code (if required)',
+          prefixIcon: const Icon(Icons.verified_user_outlined),
+          helperText: 'Leave blank unless LoanHub requires additional verification.',
+        ),
+        validator: (value) {
+          final code = value?.trim() ?? '';
+          if (code.isEmpty) return null;
+          if (_useRecoveryCode) {
+            return code.length >= 8 && code.length <= 32
+                ? null : 'Enter a valid recovery code';
+          }
+          return RegExp(r'^\d{6,8}$').hasMatch(code)
+              ? null : 'Enter a 6–8 digit authenticator code';
+        },
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: _busy ? null : () => setState(() {
+            _useRecoveryCode = !_useRecoveryCode;
+            _secondFactor.clear();
+          }),
+          child: Text(_useRecoveryCode
+              ? 'Use authenticator code instead'
+              : 'Use a recovery code instead'),
+        ),
       ),
       if (_error != null) ...[
         const SizedBox(height: 14),

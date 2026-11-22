@@ -32,12 +32,16 @@ void main() {
     expect(find.text('Employee sign in'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('staff-phone')), '59000000');
     await tester.enterText(find.byKey(const Key('staff-password')), 'secretpass');
+    await tester.ensureVisible(find.byKey(const Key('staff-login')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('staff-login')));
     await tester.pumpAndSettle();
     expect(find.text('Employee workspace'), findsOneWidget);
     expect(find.text('Branch ID: verified-branch'), findsOneWidget);
     expect(find.text('Register client'), findsOneWidget);
     expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('staff-logout')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('staff-logout')));
     await tester.pumpAndSettle();
     expect(find.text('Employee sign in'), findsOneWidget);
@@ -49,6 +53,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('staff-phone')), '59000000');
     await tester.enterText(find.byKey(const Key('staff-password')), 'secretpass');
+    await tester.ensureVisible(find.byKey(const Key('staff-login')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('staff-login')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('staff-error')), findsOneWidget);

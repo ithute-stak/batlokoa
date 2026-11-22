@@ -108,6 +108,17 @@ abstract class StaffGateway {
   Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30});
 }
 
+/// Optional extension for LoanHub employees with second-factor verification.
+/// Existing staff gateway implementations remain compatible.
+abstract class StaffSecondFactorGateway {
+  Future<StaffSession> loginWithSecondFactor(
+    String phone,
+    String password, {
+    String? otp,
+    String? recoveryCode,
+  });
+}
+
 /// Explicitly disabled until a reviewed same-origin BFF client is installed.
 /// Unlike the legacy customer preview, this never simulates signing in.
 class DisabledStaffGateway implements StaffGateway {
@@ -135,7 +146,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -162,12 +173,29 @@ class SameOriginStaffGateway implements StaffGateway {
   }
 
   @override
-  Future<StaffSession> login(String phone, String password) async {
+  Future<StaffSession> login(String phone, String password) =>
+      loginWithSecondFactor(phone, password);
+
+  @override
+  Future<StaffSession> loginWithSecondFactor(
+    String phone,
+    String password, {
+    String? otp,
+    String? recoveryCode,
+  }) async {
+    if (otp != null && recoveryCode != null) {
+      throw ArgumentError('Select either an authenticator code or recovery code');
+    }
     final res = await client.post(_url('/api/v1/staff/login'),
         headers: {'Content-Type': 'application/json',
                   'Accept': 'application/json',
                   if (!browserManagedOrigin) 'Origin': origin.toString()},
-        body: jsonEncode({'phone': phone, 'password': password}));
+        body: jsonEncode({
+          'phone': phone,
+          'password': password,
+          if (otp != null) 'otp': otp,
+          if (recoveryCode != null) 'recovery_code': recoveryCode,
+        }));
     if (res.statusCode != 200) throw StateError('Employee sign-in was denied');
     // Login response is not sufficient authorization: revalidate via session.
     final verified = await session();
