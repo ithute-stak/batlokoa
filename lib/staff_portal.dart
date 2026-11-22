@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'batlokoa_logo.dart';
 import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
+import 'owner_staff_management_screen.dart';
 import 'staff_client_registration_screen.dart';
 
 /// Separate staff experience; customer demo state is never reused.
@@ -335,6 +336,20 @@ class _StaffPortalState extends State<StaffPortal> {
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
         ],
         const SizedBox(height: 16),
+        if (session.role == 'COMPANY_OWNER' &&
+            session.companyWide && widget.gateway is OwnerStaffManagementGateway)
+          Card(child: ListTile(
+            key: const Key('owner-manage-employees'),
+            leading: const Icon(Icons.admin_panel_settings_outlined),
+            title: const Text('Manage employees'),
+            subtitle: const Text('View staff, assign branches and prepare new employee accounts'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _busy ? null : () => Navigator.push(context,
+              MaterialPageRoute<void>(builder: (_) => OwnerStaffManagementScreen(
+                staff: session,
+                gateway: widget.gateway as OwnerStaffManagementGateway,
+              ))),
+          )),
         const Text('Operations',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
