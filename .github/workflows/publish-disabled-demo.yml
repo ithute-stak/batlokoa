@@ -1,4 +1,4 @@
-# Controlled disabled-demo image publication trigger: 2026-11-22 national-ID-first registration check, no client writes.
+# Controlled disabled-demo image publication trigger: 2026-11-22 existing-client National ID match handoff; no writes.
 name: Publish Batlokoa disabled-demo Docker images
 
 on:
