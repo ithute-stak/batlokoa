@@ -64,6 +64,11 @@ async def registration_readiness(request: Request):
         ):
             if type(body.get(key)) is not bool:
                 raise ValueError("Missing strict availability flag")
+        if (body["new_only_registration_available"] or
+                body["can_submit_new_only_registration"]):
+            # A changed upstream release contract must be assessed separately
+            # before this read-only Batlokoa application can make any claim.
+            raise ValueError("New LoanHub release requires a reviewed integration")
         if body.get("reason_code") not in _ALLOWED_REASON:
             raise ValueError("Unknown registration release status")
         # Until the Batlokoa client creation handler is independently
