@@ -32,7 +32,7 @@ class CreatedClient:
 
 
 class NewClientReceipt(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="forbid")
     client_account_id: UUID
     replayed: bool
 
