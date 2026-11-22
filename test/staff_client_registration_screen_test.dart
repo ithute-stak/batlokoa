@@ -15,110 +15,109 @@ Future<void> showForm(WidgetTester tester, {StaffSession staff = assigned}) asyn
 }
 
 Future<void> enter(WidgetTester tester, String key, String value) async {
-  final widget = find.byKey(Key('register-$key'));
-  if (widget.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(widget, 180,
-        scrollable: find.byType(Scrollable).first);
-  } else {
-    await tester.ensureVisible(widget);
-  }
+  final finder = find.byKey(Key('register-$key'));
+  await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
-  await tester.enterText(widget, value);
+  await tester.enterText(finder, value);
+}
+
+Future<void> next(WidgetTester tester) async {
+  tester.testTextInput.hide();
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('register-continue')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> previous(WidgetTester tester) async {
+  await tester.tap(find.text('Previous'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> prepareValidSteps(WidgetTester tester) async {
+  await enter(tester, 'first-name', 'Palesa');
+  await enter(tester, 'last-name', 'Mokoena');
+  await enter(tester, 'phone', '59000000');
+  await next(tester);
+  expect(find.text('Identity and address'), findsOneWidget);
+  await enter(tester, 'date-of-birth', '1990-01-01');
+  await enter(tester, 'district', 'Maseru');
+  await enter(tester, 'national-id', 'TEST-NATIONAL-ID');
+  await next(tester);
+  expect(find.text('Employment and loans'), findsOneWidget);
+  await enter(tester, 'monthly-income', '1250.00');
+  await next(tester);
+  expect(find.text('Banking details'), findsOneWidget);
+  await next(tester);
+  expect(find.text('Consent and review'), findsOneWidget);
 }
 
 void main() {
-  testWidgets('invalid client details never produce a review or submission',
+  testWidgets('five stages match LoanHub and prohibit client creation',
       (tester) async {
     await showForm(tester);
-    tester.testTextInput.hide();
-    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
-        180, scrollable: find.byType(Scrollable).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('register-review')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('register-review-summary')), findsNothing);
+    expect(find.text('Personal details'), findsOneWidget);
+    expect(find.text('Step 1 of 5'), findsOneWidget);
+    await prepareValidSteps(tester);
+    expect(find.text('Step 5 of 5'), findsOneWidget);
     expect(find.text('Submit registration — unavailable'), findsOneWidget);
     final submit = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
+      find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
     expect(submit.onPressed, isNull);
-  });
-
-  testWidgets('valid local draft produces non-submitting masked review',
-      (tester) async {
-    await showForm(tester);
-    await enter(tester, 'first-name', 'Palesa');
-    await enter(tester, 'last-name', 'Mokoena');
-    await enter(tester, 'phone', '59000000');
-    await enter(tester, 'date-of-birth', '1990-01-01');
-    await enter(tester, 'gender', 'Female');
-    await enter(tester, 'district', 'Maseru');
-    await enter(tester, 'employment-status', 'Employed');
-    await enter(tester, 'national-id', 'TEST-NATIONAL-ID');
-    await enter(tester, 'monthly-income', '1250.00');
-    tester.testTextInput.hide();
-    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
-        180, scrollable: find.byType(Scrollable).first);
+    expect(find.byKey(const Key('register-review-summary')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('register-review')), 160,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-review')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
-    expect(find.textContaining('Palesa Mokoena'), findsOneWidget);
-    expect(find.textContaining('test-branch'), findsWidgets);
-    expect(find.descendant(
-      of: find.byKey(const Key('register-review-summary')),
-      matching: find.textContaining('TEST-NATIONAL-ID')),
-      findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('Submit registration — unavailable'), 180,
-      scrollable: find.byType(Scrollable).first);
-    await tester.pumpAndSettle();
-    expect(find.text('Submit registration — unavailable'), findsOneWidget);
+    expect(find.textContaining('Palesa'), findsWidgets);
+    expect(find.textContaining('TEST-NATIONAL-ID'), findsNothing);
   });
 
-  testWidgets('missing verified branch cannot prepare registration',
+  testWidgets('required fields prevent moving into the next stage',
+      (tester) async {
+    await showForm(tester);
+    await next(tester);
+    expect(find.text('Step 1 of 5'), findsOneWidget);
+    expect(find.text('Personal details'), findsOneWidget);
+    await enter(tester, 'first-name', 'Palesa');
+    await enter(tester, 'last-name', 'Mokoena');
+    await enter(tester, 'phone', '59000000');
+    await next(tester);
+    expect(find.text('Identity and address'), findsOneWidget);
+    await enter(tester, 'date-of-birth', '1990-01-01');
+    await enter(tester, 'district', 'Maseru');
+    await next(tester);
+    expect(find.text('Step 2 of 5'), findsOneWidget);
+  });
+
+  testWidgets('in-memory draft survives back and forth without saving',
+      (tester) async {
+    await showForm(tester);
+    await enter(tester, 'first-name', 'Mpho');
+    await enter(tester, 'last-name', 'Theko');
+    await enter(tester, 'phone', '59000001');
+    await next(tester);
+    await previous(tester);
+    final first = tester.widget<TextFormField>(
+        find.byKey(const Key('register-first-name')));
+    expect(first.controller?.text, 'Mpho');
+    expect(find.byKey(const Key('register-review-summary')), findsNothing);
+  });
+
+  testWidgets('missing authorized branch cannot enter identity stage',
       (tester) async {
     await showForm(tester, staff: const StaffSession(
       role: 'LOAN_OFFICER', companyId: 'test-company',
       branchIds: [], companyWide: false,
     ));
-    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
-        180, scrollable: find.byType(Scrollable).first);
-    await tester.pumpAndSettle();
-    final review = tester.widget<FilledButton>(
-        find.byKey(const Key('register-review')));
-    expect(review.onPressed, isNull);
-    // The branch warning is near the top of the long, lazily built form.
-    await tester.dragUntilVisible(
-      find.textContaining('No verified branch is available'),
-      find.byType(Scrollable).first, const Offset(0, 250));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('No verified branch is available'), findsOneWidget);
-  });
-
-  testWidgets('changing values clears previous review',
-      (tester) async {
-    await showForm(tester);
+    expect(find.textContaining('No authorized branch available'), findsOneWidget);
     await enter(tester, 'first-name', 'Palesa');
     await enter(tester, 'last-name', 'Mokoena');
     await enter(tester, 'phone', '59000000');
-    await enter(tester, 'date-of-birth', '1990-01-01');
-    await enter(tester, 'gender', 'Female');
-    await enter(tester, 'district', 'Maseru');
-    await enter(tester, 'employment-status', 'Employed');
-    await enter(tester, 'passport-number', 'TEST-PASSPORT');
-    tester.testTextInput.hide();
-    await tester.scrollUntilVisible(find.byKey(const Key('register-review')),
-        180, scrollable: find.byType(Scrollable).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('register-review')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
-    final firstName = find.byKey(const Key('register-first-name'));
-    await tester.dragUntilVisible(firstName, find.byType(Scrollable).first,
-        const Offset(0, 220));
-    await tester.pumpAndSettle();
-    await tester.enterText(firstName, 'Mpho');
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('register-review-summary')), findsNothing);
+    await next(tester);
+    expect(find.text('Step 1 of 5'), findsOneWidget);
   });
 }
