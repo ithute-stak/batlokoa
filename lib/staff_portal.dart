@@ -17,6 +17,8 @@ class _StaffPortalState extends State<StaffPortal> {
   final _form = GlobalKey<FormState>();
   final _phone = TextEditingController();
   final _password = TextEditingController();
+  final _secondFactor = TextEditingController();
+  bool _useRecoveryCode = false;
   StaffSession? _session;
   bool _loading = true;
   bool _busy = false;
@@ -44,11 +46,20 @@ class _StaffPortalState extends State<StaffPortal> {
     if (!_form.currentState!.validate() || _busy) return;
     setState(() { _busy = true; _error = null; });
     try {
-      final session = await widget.gateway.login(
-          _phone.text.trim(), _password.text);
+      final enteredSecondFactor = _secondFactor.text.trim();
+      final session = widget.gateway is StaffSecondFactorGateway
+          ? await (widget.gateway as StaffSecondFactorGateway)
+              .loginWithSecondFactor(
+                  _phone.text.trim(), _password.text,
+                  otp: enteredSecondFactor.isNotEmpty && !_useRecoveryCode
+                      ? enteredSecondFactor : null,
+                  recoveryCode: enteredSecondFactor.isNotEmpty && _useRecoveryCode
+                      ? enteredSecondFactor : null)
+          : await widget.gateway.login(_phone.text.trim(), _password.text);
       if (mounted) {
         setState(() => _session = session);
         _password.clear();
+        _secondFactor.clear();
       }
     } catch (_) {
       if (mounted) {
@@ -77,6 +88,7 @@ class _StaffPortalState extends State<StaffPortal> {
   void dispose() {
     _phone.dispose();
     _password.dispose();
+    _secondFactor.dispose();
     super.dispose();
   }
 
@@ -131,6 +143,146 @@ class _StaffPortalState extends State<StaffPortal> {
                   ? Icons.visibility_outlined : Icons.visibility_off_outlined))),
         validator: (v) => (v == null || v.length < 6)
             ? 'Enter your password' : null,
+      ),
+      const SizedBox(height: 12),
+      TextFormField(
+        key: const Key('staff-second-factor'),
+        controller: _secondFactor,
+        obscureText: _useRecoveryCode,
+        keyboardType: _useRecoveryCode ? TextInputType.text : TextInputType.number,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(
+          labelText: _useRecoveryCode
+              ? 'Recovery code (if required)'
+              : 'Authenticator code (if required)',
+          prefixIcon: const Icon(Icons.verified_user_outlined),
+          helperText: 'Leave blank unless LoanHub requires additional verification.',
+        ),
+        validator: (value) {
+          final code = value?.trim() ?? '';
+          if (code.isEmpty) return null;
+          if (_useRecoveryCode) {
+            return code.length >= 8 && code.length <= 32
+                ? null : 'Enter a valid recovery code';
+          }
+          return RegExp(r'^\\d{6,8}
+        Text(_error!, key: const Key('staff-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      ],
+      const SizedBox(height: 22),
+      FilledButton.icon(
+        key: const Key('staff-login'),
+        onPressed: _busy ? null : _login,
+        icon: const Icon(Icons.login),
+        label: Text(_busy ? 'Verifying...' : 'Sign in securely'),
+      ),
+      const SizedBox(height: 12),
+      const Text('Staff financial operations remain unavailable '
+          'until LoanHub integration is approved.'),
+    ]),
+  );
+
+  Widget _dashboard(BuildContext context, StaffSession session) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const BatlokoaLogo(size: 48),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Employee workspace',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              Text('Role: ${session.role.replaceAll('_', ' ')}'),
+            ],
+          )),
+          IconButton(
+            key: const Key('staff-logout'),
+            onPressed: _busy ? null : _logout,
+            tooltip: 'Sign out',
+            icon: const Icon(Icons.logout)),
+        ]),
+        const SizedBox(height: 20),
+        Card(child: Padding(padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Verified LoanHub access',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Company ID: ${session.companyId}'),
+              Text(session.companyWide
+                  ? 'Company-wide staff scope'
+                  : 'Assigned branches: ${session.branchIds.length}'),
+              for (final branch in session.branchIds)
+                Text('Branch ID: $branch'),
+            ]),
+        )),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+        const SizedBox(height: 16),
+        const Text('Operations',
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Card(child: ListTile(
+          key: const Key('staff-find-clients'),
+          leading: const Icon(Icons.people_outline),
+          title: const Text('Find clients'),
+          subtitle: const Text('Search your authorized LoanHub client directory'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _busy ? null : () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(builder: (_) =>
+                StaffClientDirectoryScreen(
+                  gateway: widget.gateway, staff: session)),
+          ),
+        )),
+        Card(child: ListTile(
+          key: const Key('staff-register-client'),
+          leading: const Icon(Icons.person_add_alt_outlined),
+          title: const Text('Register client'),
+          subtitle: const Text('Prepare client details for identity review; no submission'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _busy ? null : () => Navigator.push(
+            context, MaterialPageRoute<void>(
+              builder: (_) => StaffClientRegistrationScreen(staff: session, gateway: widget.gateway),
+            ),
+          ),
+        )),
+        for (final item in const [
+          (Icons.description_outlined, 'New loan application',
+            'Application submission not yet enabled'),
+          (Icons.request_quote_outlined, 'Prepare loan offer',
+            'LoanHub offer integration pending'),
+        ])
+          Card(child: ListTile(
+            leading: Icon(item.$1),
+            title: Text(item.$2),
+            subtitle: Text(item.$3),
+            trailing: const Icon(Icons.lock_outline),
+            enabled: false,
+          )),
+        const SizedBox(height: 12),
+        const Text('No client, loan or payment data is simulated '
+            'in the employee workspace.'),
+      ]);
+}
+).hasMatch(code)
+              ? null : 'Enter a 6–8 digit authenticator code';
+        },
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: _busy ? null : () => setState(() {
+            _useRecoveryCode = !_useRecoveryCode;
+            _secondFactor.clear();
+          }),
+          child: Text(_useRecoveryCode
+              ? 'Use authenticator code instead'
+              : 'Use a recovery code instead'),
+        ),
       ),
       if (_error != null) ...[
         const SizedBox(height: 14),
