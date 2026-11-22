@@ -207,7 +207,8 @@ class _StaffPortalState extends State<StaffPortal> {
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Employee workspace',
+              Text(session.role == 'COMPANY_OWNER'
+                  ? 'Company owner workspace' : 'Employee workspace',
                   style: Theme.of(context).textTheme.headlineSmall),
               Text('Role: ${session.role.replaceAll('_', ' ')}'),
             ],
@@ -218,6 +219,12 @@ class _StaffPortalState extends State<StaffPortal> {
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout)),
         ]),
+        if (session.role == 'COMPANY_OWNER' && session.companyWide)
+          const Card(child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Company-wide access verified by LoanHub. '
+                'Financial approvals and client creation are not enabled in this pilot.'),
+          )),
         const SizedBox(height: 20),
         Card(child: Padding(padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start,
