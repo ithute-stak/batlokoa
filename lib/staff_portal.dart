@@ -4,6 +4,7 @@ import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'owner_staff_management_screen.dart';
 import 'staff_workspace_shell.dart';
+import 'bfs_responsive.dart';
 import 'staff_client_registration_screen.dart';
 
 /// Separate staff experience; customer demo state is never reused.
@@ -136,7 +137,7 @@ class _StaffPortalState extends State<StaffPortal> {
             child: _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                  padding: BfsResponsive.pagePadding(context),
                   children: [
                     if (_session == null) _signIn(context)
                     else _dashboard(context, _session!),

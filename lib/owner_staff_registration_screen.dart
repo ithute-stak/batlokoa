@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
 import 'batlokoa_design.dart';
 import 'bfs_widgets.dart';
+import 'bfs_responsive.dart';
 
 /// Owner-only employee management; never grants client or lending write rights.
 class OwnerStaffRegistrationScreen extends StatefulWidget {
@@ -118,7 +119,7 @@ class _OwnerStaffRegistrationScreenState extends State<OwnerStaffRegistrationScr
         backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
       body: SafeArea(child: Center(child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
-        child: ListView(padding: const EdgeInsets.all(20), children: [
+        child: ListView(padding: BfsResponsive.pagePadding(context), children: [
           const BfsSectionTitle(eyebrow: 'PEOPLE & ACCESS',
             title: 'New employee account',
             subtitle: 'Set up a team member and assign their LoanHub permissions.'),
@@ -176,6 +177,7 @@ class _OwnerStaffRegistrationScreenState extends State<OwnerStaffRegistrationScr
               const SizedBox(height: 17),
               DropdownButtonFormField<String>(
                 key: const Key('staff-role'), value: _role,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Role'),
                 items: [
                   for (final role in roles.entries)

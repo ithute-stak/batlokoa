@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
 import 'batlokoa_logo.dart';
 import 'bfs_widgets.dart';
+import 'bfs_responsive.dart';
 import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'staff_client_registration_screen.dart';
@@ -41,19 +42,34 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
   }
 
   Widget page(Widget header, List<Widget> body) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 23, 20, 35),
+    padding: BfsResponsive.pagePadding(context),
     children: [header, const SizedBox(height: 25), ...body],
   );
 
   Widget actionGrid(List<Widget> items) => LayoutBuilder(
-    builder: (context, constraints) => GridView.count(
-      crossAxisCount: constraints.maxWidth < 500 ? 2 : 3,
-      crossAxisSpacing: 12, mainAxisSpacing: 12,
-      childAspectRatio: constraints.maxWidth < 380 ? .88 : 1.07,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: items,
-    ),
+    builder: (context, constraints) {
+      final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.5);
+      final available = constraints.maxWidth;
+      // A single, compact row per action on small phones. Two or three
+      // columns only where actual usable width and text scaling permit it.
+      final columns = scale > 1.35 || available < 440
+          ? 1 : available < 720 ? 2 : 3;
+      if (columns == 1) {
+        return Column(children: [
+          for (final item in items)
+            Padding(padding: const EdgeInsets.only(bottom: 12),
+              child: SizedBox(width: double.infinity, child: item)),
+        ]);
+      }
+      return GridView.count(
+        crossAxisCount: columns,
+        crossAxisSpacing: 12, mainAxisSpacing: 12,
+        mainAxisExtent: 187 * scale,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        children: items,
+      );
+    },
   );
 
   Widget home() => page(
@@ -68,9 +84,10 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
           begin: Alignment.topLeft, end: Alignment.bottomRight)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Row(children: [
-          BfsPill(label: 'CONNECTED TO LOANHUB',
-            color: Colors.white, background: Color(0xFF345475)),
-          Spacer(),
+          Flexible(child: Align(alignment: Alignment.centerLeft,
+            child: BfsPill(label: 'CONNECTED TO LOANHUB',
+              color: Colors.white, background: Color(0xFF345475)))),
+          SizedBox(width: 8),
           Icon(Icons.shield_outlined, color: Colors.white70),
         ]),
         const SizedBox(height: 27),
@@ -185,8 +202,9 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
       const Row(children: [
         Icon(Icons.verified_user_rounded, color: BatlokoaDesign.accent),
         SizedBox(width: 10),
-        Text('Verified LoanHub access', style: TextStyle(fontSize: 16,
-          fontWeight: FontWeight.w800, color: BatlokoaDesign.navy)),
+        Expanded(child: Text('Verified LoanHub access',
+          softWrap: true, style: TextStyle(fontSize: 16,
+            fontWeight: FontWeight.w800, color: BatlokoaDesign.navy))),
       ]),
       const SizedBox(height: 17),
       Text('Role', style: Theme.of(context).textTheme.labelMedium),
@@ -217,7 +235,9 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 820;
+    final availableWidth = MediaQuery.sizeOf(context).width;
+    final wide = availableWidth >= 820;
+
     const destinations = <NavigationDestination>[
       NavigationDestination(icon: Icon(Icons.home_outlined),
         selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
@@ -279,6 +299,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: Color(0xFFE4EAF1)))),
         child: NavigationBar(key: const Key('staff-bottom-navigation'),
+          height: BfsResponsive.navigationHeight(context),
           selectedIndex: tab,
           onDestinationSelected: (index) => setState(() => tab = index),
           destinations: destinations)),

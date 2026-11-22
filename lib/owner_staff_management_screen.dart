@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'batlokoa_design.dart';
 import 'bfs_widgets.dart';
+import 'bfs_responsive.dart';
 import 'staff_gateway.dart';
 import 'owner_staff_registration_screen.dart';
 
@@ -89,7 +90,7 @@ class _OwnerStaffManagementState extends State<OwnerStaffManagementScreen> {
       backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 740),
-      child: ListView(padding: const EdgeInsets.all(20), children: [
+      child: ListView(padding: BfsResponsive.pagePadding(context), children: [
         const BfsSectionTitle(eyebrow: 'PEOPLE & PERMISSIONS',
           title: 'Your team',
           subtitle: 'View employees securely across your Batlokoa branches.'),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
 import 'batlokoa_design.dart';
 import 'bfs_widgets.dart';
+import 'bfs_responsive.dart';
 
 /// Employee-only, read-only directory; no registration or loan writer here.
 class StaffClientDirectoryScreen extends StatefulWidget {
@@ -85,7 +86,7 @@ class _StaffClientDirectoryScreenState extends State<StaffClientDirectoryScreen>
       backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760),
-      child: ListView(padding: const EdgeInsets.all(20), children: [
+      child: ListView(padding: BfsResponsive.pagePadding(context), children: [
         const BfsSectionTitle(eyebrow: 'CUSTOMER SEARCH',
           title: 'Authorized client directory',
           subtitle: 'Find and review clients using live LoanHub records.'),
@@ -107,6 +108,7 @@ class _StaffClientDirectoryScreenState extends State<StaffClientDirectoryScreen>
           DropdownButtonFormField<String>(
             key: const Key('staff-client-branch'),
             value: _selectedBranch,
+            isExpanded: true,
             decoration: const InputDecoration(labelText: 'Branch'),
             items: [
               const DropdownMenuItem<String>(
