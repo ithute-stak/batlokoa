@@ -20,6 +20,45 @@ class StaffClientRegistrationScreen extends StatefulWidget {
 class _StaffClientRegistrationScreenState
     extends State<StaffClientRegistrationScreen> {
   final _form = GlobalKey<FormState>();
+  // One active stage is built at a time; values remain in memory until exit.
+  int _step = 0;
+  static const _steps = [
+    'Personal details', 'Identity and address', 'Employment and loans',
+    'Banking details', 'Consent and review',
+  ];
+  final _extra = <String, TextEditingController>{};
+  final _choice = <String, String>{
+    'marital_status': '', 'employment_type': '',
+    'bank_name': '', 'bank_account_type': 'savings',
+  };
+  bool _hasExistingLoans = false;
+  bool _salaryAccount = false;
+  bool _loadingBranches = false;
+  List<Map<String, String>> _availableBranches = const [];
+  TextEditingController _x(String key) =>
+      _extra.putIfAbsent(key, TextEditingController.new);
+  Widget _extraField(String key, String label, {TextInputType? type, bool sensitive = false}) =>
+    Padding(padding: const EdgeInsets.only(bottom: 14), child: TextFormField(
+      key: Key('register-' + key.replaceAll('_', '-')),
+      controller: _x(key),
+      maxLength: key == 'physical_address' ? 500 : 150,
+      keyboardType: type,
+      autocorrect: !sensitive, enableSuggestions: !sensitive,
+      decoration: InputDecoration(labelText: label),
+    ));
+  Widget _select(String key, String label, Map<String, String> options) =>
+    Padding(padding: const EdgeInsets.only(bottom: 14),
+      child: DropdownButtonFormField<String>(
+        key: Key('register-' + key.replaceAll('_', '-')),
+        value: _choice[key]!.isEmpty ? null : _choice[key],
+        isExpanded: true,
+        decoration: InputDecoration(labelText: label),
+        items: [for (final option in options.entries) DropdownMenuItem(
+          value: option.key,
+          child: Text(option.value, overflow: TextOverflow.ellipsis))],
+        onChanged: (v) => setState(() => _choice[key] = v ?? ''),
+      ));
+
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
   final _phone = TextEditingController();
@@ -42,6 +81,32 @@ class _StaffClientRegistrationScreenState
     super.initState();
     if (!widget.staff.companyWide && widget.staff.branchIds.length == 1) {
       _branch = widget.staff.branchIds.single;
+    }
+    _loadBranches();
+  }
+
+  Future<void> _loadBranches() async {
+    if (widget.staff.companyWide &&
+        widget.gateway is OwnerStaffManagementGateway) {
+      setState(() => _loadingBranches = true);
+      try {
+        final items = await (widget.gateway as OwnerStaffManagementGateway)
+            .ownerBranches();
+        if (!mounted) return;
+        setState(() {
+          _availableBranches = items
+              .where((v) => v['id'] is String && v['name'] is String)
+              .map((v) => {'id': v['id'] as String, 'name': v['name'] as String})
+              .toList();
+          _loadingBranches = false;
+        });
+      } catch (_) {
+        if (mounted) setState(() => _loadingBranches = false);
+      }
+    } else {
+      _availableBranches = [
+        for (final id in widget.staff.branchIds) {'id': id, 'name': id},
+      ];
     }
   }
 
@@ -142,6 +207,7 @@ class _StaffClientRegistrationScreenState
     ]) {
       controller.dispose();
     }
+    for (final controller in _extra.values) { controller.dispose(); }
     super.dispose();
   }
 
