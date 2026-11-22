@@ -22,8 +22,8 @@ Map<String, dynamic> build({
     'physical_address': 'Synthetic address',
     'income_day': '25',
     'existing_loan_total': '500.00',
-    'bank_account_holder': 'Synthetic Client',
-    'bank_account_number': '1234567890',
+    if (bank.isNotEmpty) 'bank_account_holder': 'Synthetic Client',
+    if (bank.isNotEmpty) 'bank_account_number': '1234567890',
     'town_or_village': 'Maseru West',
   },
   choices: {
