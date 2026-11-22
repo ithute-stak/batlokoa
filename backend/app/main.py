@@ -12,6 +12,7 @@ from .customer_loans_api import router as customer_loans_router
 from .session_loan_reads import router as session_loan_reads_router
 from .auth_routes import router as auth_router
 from .staff_login_routes import router as staff_login_router
+from .employee_pilot_bootstrap import configure_employee_pilot
 from .staff_clients_routes import router as staff_clients_router
 from .staff_registration_preflight_routes import router as staff_registration_preflight_router
 from .staff_registration_release_routes import router as staff_registration_release_router
@@ -84,3 +85,6 @@ app.include_router(staff_registration_preflight_router)
 
 # Informational release status is opt-in and never authorizes client creation.
 app.include_router(staff_registration_release_router)
+
+# Default deployment remains disabled. Explicit pilot configuration is required.
+configure_employee_pilot(app)

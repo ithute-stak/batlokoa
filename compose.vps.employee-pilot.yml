@@ -1,0 +1,15 @@
+# Add only for the explicitly approved, limited read-only staff pilot.
+# This is NOT a release of client registration, lending or payment operations.
+# Run beside compose.vps.demo.yml, never as a standalone Compose file.
+services:
+  batlokoa-gateway:
+    environment:
+      BATLOKOA_EMPLOYEE_PILOT_MODE: limited_read_only
+      BATLOKOA_EMPLOYEE_PILOT_ACK: VOLATILE_SESSIONS_10_MINUTES_NO_WRITES
+      BATLOKOA_EMPLOYEE_PUBLIC_ORIGIN: https://batlokoa.co.ls
+      BATLOKOA_EMPLOYEE_LOANHUB_ORIGIN: https://api.loanhub.co.ls
+      BATLOKOA_EMPLOYEE_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Set operator-verified Batlokoa company UUID}
+      BATLOKOA_EMPLOYEE_READONLY_DIRECTORY: "true"
+    volumes:
+      # A public verification key only; NEVER mount LoanHub's private key.
+      - /opt/batlokoa-demo/keys/loanhub_jwt_public.pem:/run/secrets/loanhub_jwt_public.pem:ro
