@@ -60,8 +60,12 @@ def configure_employee_pilot(app: FastAPI) -> bool:
     key = serialization.load_pem_public_key(path.read_bytes())
     if not isinstance(key, RSAPublicKey) or key.key_size < 2048:
         raise ValueError("RSA verification public key required")
+    allow_owner = (
+        os.environ.get("BATLOKOA_OWNER_LOGIN_LOANHUB_ACTIVE_MEMBERSHIP") == "true"
+    )
     verifier = LoanHubStaffVerifier(
         origin=LOANHUB_ORIGIN, public_key=key, batlokoa_company_id=company,
+        allow_unverified_company_owner=allow_owner,
     )
     config = StaffLoginConfig(
         public_origin=PUBLIC_ORIGIN,

@@ -1,23 +1,29 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 
-/// Compact copy of the real Batlokoa Financial Services logo recovered from
-/// the project's prior official web branding. Optimized for in-app marks;
-/// the original high-resolution PNG should be retained for print and icons.
+/// The official Batlokoa Financial Services artwork is bundled as an asset.
+/// Keeping the original emblem in a separately loaded image avoids runtime
+/// base64 decoding on mobile browsers and makes cache inspection easier.
 class BatlokoaLogo extends StatelessWidget {
   final double size;
   const BatlokoaLogo({super.key, this.size = 64});
-
-  static final _bytes = base64Decode(_logoWebp);
 
   @override
   Widget build(BuildContext context) => Semantics(
     label: 'Batlokoa Financial Services logo',
     image: true,
-    child: Image.memory(_bytes, width: size, height: size, fit: BoxFit.contain,
-      gaplessPlayback: true, filterQuality: FilterQuality.medium),
+    child: Image.asset(
+      'assets/branding/batlokoa_logo.webp',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (context, error, stack) => SizedBox(
+        width: size,
+        height: size,
+        child: const Center(
+          child: Icon(Icons.broken_image_outlined, semanticLabel: 'Logo unavailable'),
+        ),
+      ),
+    ),
   );
 }
-
-const _logoWebp =
-'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';

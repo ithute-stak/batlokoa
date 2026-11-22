@@ -10,6 +10,8 @@ services:
       BATLOKOA_EMPLOYEE_LOANHUB_ORIGIN: https://api.loanhub.co.ls
       BATLOKOA_EMPLOYEE_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Set operator-verified Batlokoa company UUID}
       BATLOKOA_EMPLOYEE_READONLY_DIRECTORY: "true"
+      # Owner-only read-only pilot: LoanHub permits active membership before account verification.
+      BATLOKOA_OWNER_LOGIN_LOANHUB_ACTIVE_MEMBERSHIP: "true"
     volumes:
       # A public verification key only; NEVER mount LoanHub's private key.
       - /opt/batlokoa-demo/keys/loanhub_jwt_public.pem:/run/secrets/loanhub_jwt_public.pem:ro

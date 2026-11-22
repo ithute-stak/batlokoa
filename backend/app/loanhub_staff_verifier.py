@@ -21,7 +21,8 @@ class StaffVerificationUnavailable(Exception):
 
 class LoanHubStaffVerifier:
     def __init__(self, *, origin: str, public_key: object,
-                 batlokoa_company_id: UUID, client: httpx.Client | None = None):
+                 batlokoa_company_id: UUID, client: httpx.Client | None = None,
+                 allow_unverified_company_owner: bool = False):
         parts = urlsplit(origin)
         if (parts.scheme != "https" or not parts.hostname or parts.username or
                 parts.password or parts.path not in ("", "/") or parts.query or
@@ -32,6 +33,9 @@ class LoanHubStaffVerifier:
         self._origin = origin.rstrip("/")
         self._public_key = public_key
         self._company_id = batlokoa_company_id
+        if not isinstance(allow_unverified_company_owner, bool):
+            raise ValueError("Owner pilot exception must be explicitly boolean")
+        self._allow_unverified_company_owner = allow_unverified_company_owner
         self._client = client
 
     def verify(self, token: str) -> VerifiedStaffIdentity:
@@ -73,7 +77,6 @@ class LoanHubStaffVerifier:
             me = response.json()
             if (not isinstance(me, dict) or UUID(str(me.get("id"))) != user_id
                     or me.get("is_active") is not True
-                    or me.get("is_verified") is not True
                     or me.get("must_change_password") is not False
                     or str(me.get("role", "")).lower() == "borrower"):
                 raise StaffVerificationUnavailable()
@@ -92,6 +95,18 @@ class LoanHubStaffVerifier:
                 "LOAN_OFFICER", "CREDIT_ANALYST",
             }:
                 raise StaffVerificationUnavailable()
+            # LoanHub's own login permits an active, unverified user.
+            # Exception is strictly limited to company owners in an explicitly
+            # approved read-only pilot, with a verified signed LoanHub token
+            # and precisely one active membership in Batlokoa. No user flag
+            # or LoanHub permission is ever changed by this adapter.
+            if me.get("is_verified") is not True:
+                if not (
+                    self._allow_unverified_company_owner
+                    and me.get("is_verified") is False
+                    and role == "COMPANY_OWNER"
+                ):
+                    raise StaffVerificationUnavailable()
             branch_raw = m.get("branch_id")
             branch = UUID(str(branch_raw)) if branch_raw is not None else None
             if branch is None and role not in {"COMPANY_OWNER", "COMPANY_ADMIN"}:
