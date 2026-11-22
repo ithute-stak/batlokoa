@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
+import 'batlokoa_design.dart';
+import 'bfs_responsive.dart';
 
 /// Local-only assisted registration preparation. There are deliberately no
 /// POST calls, persistence, drafts in storage, or registration confirmations.
@@ -171,11 +173,12 @@ class _StaffClientRegistrationScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Register client')),
+    appBar: AppBar(title: const Text('Register client'),
+      backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760),
       child: Form(key: _form, child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: BfsResponsive.pagePadding(context),
         children: [
           Text('Client details', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
@@ -191,6 +194,7 @@ class _StaffClientRegistrationScreenState
               child: DropdownButtonFormField<String>(
                 key: const Key('register-branch'),
                 value: _branch,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Verified branch', border: OutlineInputBorder()),
                 items: [
