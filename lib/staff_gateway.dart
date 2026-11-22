@@ -119,6 +119,40 @@ abstract class StaffSecondFactorGateway {
   });
 }
 
+/// Registration release state from LoanHub; never authorizes a write.
+class StaffRegistrationReadiness {
+  final bool registrationAvailable;
+  final bool canCreateClient;
+  final bool requiresIdentityApproval;
+  final bool requiresReleaseApproval;
+
+  const StaffRegistrationReadiness({
+    required this.registrationAvailable, required this.canCreateClient,
+    required this.requiresIdentityApproval, required this.requiresReleaseApproval,
+  });
+
+  factory StaffRegistrationReadiness.fromJson(Map<String, dynamic> data) {
+    if (data['registration_available'] != false ||
+        data['can_create_client'] != false ||
+        data['reason_code'] != 'NEW_ONLY_REGISTRATION_NOT_RELEASED' ||
+        data['requires_identity_migration_approval'] is! bool ||
+        data['requires_independent_release_approval'] is! bool) {
+      throw const FormatException('Untrusted LoanHub registration status');
+    }
+    return StaffRegistrationReadiness(
+      registrationAvailable: false, canCreateClient: false,
+      requiresIdentityApproval:
+          data['requires_identity_migration_approval'] as bool,
+      requiresReleaseApproval:
+          data['requires_independent_release_approval'] as bool,
+    );
+  }
+}
+
+abstract class StaffRegistrationReadinessGateway {
+  Future<StaffRegistrationReadiness> registrationReadiness();
+}
+
 /// Independent server-side duplicate screening before any client form step.
 /// A no-match is only a candidate, never an authorization to create a client.
 class StaffNationalIdCheck {
@@ -183,7 +217,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -284,6 +318,22 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       clients.add(row);
     }
     return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
+  Future<StaffRegistrationReadiness> registrationReadiness() async {
+    final response = await client.get(
+      _url('/api/v1/staff/clients/registration-readiness'),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
+    );
+    if (response.statusCode != 200 || response.bodyBytes.length > 4096) {
+      throw StateError('LoanHub registration release status unavailable');
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw const FormatException('Invalid release status response');
+    }
+    return StaffRegistrationReadiness.fromJson(body);
   }
 
   @override
