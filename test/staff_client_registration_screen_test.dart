@@ -9,10 +9,19 @@ const assigned = StaffSession(
   branchIds: ['synthetic-branch'], companyWide: false,
 );
 
-class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway {
+class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway {
   bool match;
   bool fail;
   int checks = 0;
+  int readinessChecks = 0;
+  @override
+  Future<StaffRegistrationReadiness> registrationReadiness() async {
+    readinessChecks++;
+    return const StaffRegistrationReadiness(
+      registrationAvailable: false, canCreateClient: false,
+      requiresIdentityApproval: true, requiresReleaseApproval: true,
+    );
+  }
   MockIdentityGateway({this.match = false, this.fail = false});
 
   @override
@@ -154,6 +163,12 @@ void main() {
     await continueStep(tester);
     expect(find.text('Consent and review'), findsOneWidget);
     expect(find.text('Step 6 of 6'), findsOneWidget);
+    expect(gateway.readinessChecks, 1);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('register-release-readiness')), 160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('new-client registration is not released'), findsOneWidget);
     expect(find.text('Submit registration — unavailable'), findsOneWidget);
     final submit = tester.widget<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
