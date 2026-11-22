@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, StrictBool
 
 from .staff_authorization import (
     VerifiedStaffIdentity, StaffPermission, require_staff_permission,
@@ -28,7 +28,7 @@ class ClientCreationUnavailable(RuntimeError):
 @dataclass(frozen=True)
 class CreatedClient:
     account_id: UUID
-    replayed: bool
+    replayed: StrictBool
 
 
 class NewClientReceipt(BaseModel):
