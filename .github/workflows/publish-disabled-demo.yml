@@ -1,4 +1,4 @@
-# Controlled disabled-demo image publication trigger: 2026-11-22 employee MFA login support.
+# Controlled disabled-demo image publication trigger: 2026-11-22 company-owner role coverage.
 name: Publish Batlokoa disabled-demo Docker images
 
 on:
