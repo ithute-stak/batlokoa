@@ -87,4 +87,4 @@ app.include_router(staff_registration_preflight_router)
 app.include_router(staff_registration_release_router)
 
 # Default deployment remains disabled. Explicit pilot configuration is required.
-app.add_event_handler("startup", lambda: configure_employee_pilot(app))
+configure_employee_pilot(app)
