@@ -32,16 +32,19 @@ def access_token():
 
 
 @pytest.mark.parametrize(
-    "verified, membership_company, active_membership, expected",
+    "verified, membership_company, active_membership, role, owner_pilot, expected",
     [
-        (True, COMPANY, True, 200),
-        (False, COMPANY, True, 401),
-        (True, uuid4(), True, 401),
-        (True, COMPANY, False, 401),
+        (True, COMPANY, True, "COMPANY_OWNER", False, 200),
+        (False, COMPANY, True, "COMPANY_OWNER", False, 401),
+        (False, COMPANY, True, "COMPANY_OWNER", True, 200),
+        (True, uuid4(), True, "COMPANY_OWNER", True, 401),
+        (False, uuid4(), True, "COMPANY_OWNER", True, 401),
+        (False, COMPANY, False, "COMPANY_OWNER", True, 401),
+        (False, COMPANY, True, "BRANCH_MANAGER", True, 401),
     ],
 )
-def test_owner_login_needs_verified_active_batlokoa_membership(
-    verified, membership_company, active_membership, expected,
+def test_owner_login_requires_active_batlokoa_membership_and_reviewed_pilot(
+    verified, membership_company, active_membership, role, owner_pilot, expected,
 ):
     upstream_paths = []
     def upstream(req):
@@ -53,14 +56,14 @@ def test_owner_login_needs_verified_active_batlokoa_membership(
         assert req.url.path == "/api/v1/auth/me"
         return httpx.Response(200, json={
             "id": str(USER),
-            "role": "company_owner",
+            "role": role.lower(),
             "is_active": True,
             "is_verified": verified,
             "must_change_password": False,
             "memberships": [{
                 "company_id": str(membership_company),
-                "branch_id": None,
-                "role": "company_owner",
+                "branch_id": None if role == "COMPANY_OWNER" else str(uuid4()),
+                "role": role.lower(),
                 "is_active": active_membership,
             }],
         })
@@ -70,6 +73,7 @@ def test_owner_login_needs_verified_active_batlokoa_membership(
             public_key=KEY.public_key(),
             batlokoa_company_id=COMPANY,
             client=upstream_client,
+            allow_unverified_company_owner=owner_pilot,
         )
         app.state.staff_login_config = StaffLoginConfig(
             public_origin=PUBLIC, loanhub_origin=LOANHUB,
