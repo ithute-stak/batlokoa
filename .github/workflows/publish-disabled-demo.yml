@@ -1,4 +1,4 @@
-# Controlled disabled-demo image publication trigger: 2026-11-22 existing-client National ID match handoff; no writes.
+# Controlled disabled-demo image publication trigger: 2026-11-22 read-only LoanHub registration release readiness screen.
 name: Publish Batlokoa disabled-demo Docker images
 
 on:
