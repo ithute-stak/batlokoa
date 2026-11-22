@@ -317,58 +317,164 @@ class _StaffClientRegistrationScreenState
     ),
   );
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Register client'),
-      backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
-    body: SafeArea(child: Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 760),
-      child: Form(key: _form, child: ListView(
-        padding: BfsResponsive.pagePadding(context),
-        children: [
-          Text('Client details', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          const Text('Preparation only. No client record will be created or changed. '
-              'Identity review and release approval are required before submission.'),
-          const SizedBox(height: 20),
-          if (widget.staff.branchIds.isEmpty)
-            const Card(child: Padding(padding: EdgeInsets.all(16),
-              child: Text('No verified branch is available for registration. '
-                  'Ask your administrator to confirm your branch assignment.'))),
-          if (widget.staff.branchIds.isNotEmpty)
+
+  Widget _stage() {
+    switch (_step) {
+      case 0:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (_loadingBranches) const LinearProgressIndicator(),
+          if (!_loadingBranches && _availableBranches.isEmpty)
+            const BfsPanel(child: Text('No authorized branch available. '
+                'Contact the company administrator to assign your branch.')),
+          if (_availableBranches.isNotEmpty)
             Padding(padding: const EdgeInsets.only(bottom: 16),
               child: DropdownButtonFormField<String>(
                 key: const Key('register-branch'),
-                value: _branch,
+                value: _branch != null &&
+                    _availableBranches.any((b) => b['id'] == _branch)
+                        ? _branch : null,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Verified branch', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Branch *'),
                 items: [
-                  for (final branch in widget.staff.branchIds)
-                    DropdownMenuItem(value: branch, child: Text(branch)),
+                  for (final branch in _availableBranches)
+                    DropdownMenuItem<String>(
+                      value: branch['id'],
+                      child: Text(branch['name']!, maxLines: 1,
+                          overflow: TextOverflow.ellipsis)),
                 ],
-                onChanged: (value) => setState(() {
-                  _branch = value;
-                  _review = false;
-                }),
-                validator: (value) => value == null ? 'Choose a verified branch' : null,
+                onChanged: (v) => setState(() => _branch = v),
+                validator: (v) => v == null ? 'Select an authorized branch' : null,
               )),
           _field('First name', _firstName, validate: _required),
+          _extraField('middle_name', 'Middle name (optional)'),
           _field('Last name', _lastName, validate: _required),
           _field('Phone', _phone, validate: _validatePhone,
               type: TextInputType.phone),
+          const BfsPanel(child: Text(
+            'LoanHub defers client email and temporary password to a '
+            'separately approved account activation process.')),
+        ]);
+      case 1:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _select('gender', 'Gender *',
+              {'male': 'Male', 'female': 'Female', 'other': 'Other'}),
           _field('Date of birth', _birthDate, validate: _validateDob,
               hint: 'YYYY-MM-DD'),
-          _field('Gender', _gender, validate: _required),
-          _field('District', _district, validate: _required),
-          _field('Employment status', _employment, validate: _required),
           _field('National ID', _nationalId, sensitive: true),
           _field('Passport number', _passport, sensitive: true),
+          const Padding(padding: EdgeInsets.only(bottom: 15),
+            child: Text('National ID or passport is required. Identity '
+              'matching and legacy record review must be completed in LoanHub.',
+              style: TextStyle(color: BatlokoaDesign.secondaryInk,
+                  fontSize: 12, height: 1.5))),
+          _select('marital_status', 'Marital status', {
+            'single': 'Single', 'married': 'Married',
+            'divorced': 'Divorced', 'widowed': 'Widowed',
+          }),
+          _extraField('nationality', 'Nationality'),
+          _field('District', _district, validate: _required),
+          _extraField('town_or_village', 'Town or village'),
+          _extraField('physical_address', 'Physical address', sensitive: true),
+        ]);
+      case 2:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _select('employment_status', 'Employment status *', {
+            'employed': 'Employed', 'self_employed': 'Self-employed',
+            'unemployed': 'Unemployed', 'student': 'Student',
+            'pensioner': 'Pensioner',
+          }),
+          _extraField('employment_type', 'Employment type'),
+          _extraField('employer_name', 'Employer'),
+          _extraField('job_title', 'Job title'),
+          _extraField('income_day', 'Salary day (1–31)',
+              type: TextInputType.number),
           _field('Monthly income', _income, validate: _validateIncome,
               type: const TextInputType.numberWithOptions(decimal: true)),
+          _extraField('salary_date', 'Salary date'),
+          const SizedBox(height: 10),
+          const BfsPanel(child: Text(
+            'LoanHub reserves employer-group links, new employer groups '
+            'and government CDAS employee number for a future reviewed phase.')),
+          const SizedBox(height: 15),
+          CheckboxListTile(
+            key: const Key('register-existing-loans'),
+            value: _hasExistingLoans,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('Client has existing loans'),
+            onChanged: (v) => setState(() => _hasExistingLoans = v == true),
+          ),
+          if (_hasExistingLoans) ...[
+            _extraField('existing_loan_total',
+                'Total existing loan balance (LSL)',
+                type: const TextInputType.numberWithOptions(decimal: true)),
+            const SizedBox(height: 8),
+            for (var i = 0; i < _externalDebt.length; i++) _debtItem(i),
+            OutlinedButton.icon(
+              onPressed: _externalDebt.length >= 50 ? null : _addDebt,
+              icon: const Icon(Icons.add),
+              label: const Text('Add external debt'),
+            ),
+          ],
+        ]);
+      case 3:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const BfsPanel(child: Text(
+            'Banking information is prepared locally. LoanHub determines '
+            'supported bank prefixes and routing details during approved '
+            'registration; no account details are sent by this preview.')),
+          const SizedBox(height: 18),
+          _select('bank_name', 'Bank (optional)', {
+            'FNB': 'First National Bank',
+            'PB': 'Lesotho PostBank',
+            'STD': 'Standard Lesotho Bank',
+            'NB': 'Nedbank Lesotho',
+          }),
+          if ((_choice['bank_name'] ?? '').isNotEmpty) ...[
+            _extraField('bank_account_holder', 'Account holder',
+                sensitive: true),
+            _extraField('bank_account_number', 'Bank account number',
+                type: TextInputType.number, sensitive: true),
+            _select('bank_account_type', 'Account type', {
+              'savings': 'Savings', 'cheque': 'Cheque / Current',
+            }),
+            CheckboxListTile(
+              key: const Key('register-salary-account'),
+              value: _salaryAccount,
+              title: const Text('This is the salary account'),
+              controlAffinity: ListTileControlAffinity.leading,
+              onChanged: (v) => setState(() => _salaryAccount = v == true),
+            ),
+          ],
+        ]);
+      default:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const BfsPanel(child: Text('Review the collected details and '
+              'record the client’s explicit consent. The account is not '
+              'created by this preparation-only workflow.')),
+          const SizedBox(height: 17),
+          Text('Client: ' + _firstName.text.trim() + ' ' +
+                  _lastName.text.trim(),
+              style: const TextStyle(fontWeight: FontWeight.w800,
+                  color: BatlokoaDesign.navy)),
+          const SizedBox(height: 9),
+          Text('Branch: ' + (_branch == null ? 'Not selected'
+              : 'Authorized Batlokoa branch')),
+          const SizedBox(height: 9),
+          Text('Identity: ' + (_nationalId.text.trim().isNotEmpty
+              ? 'National ID provided' : 'Passport provided')),
+          const SizedBox(height: 9),
+          Text('District: ' + _district.text.trim()),
+          const SizedBox(height: 9),
+          Text('Existing debts: ' + _externalDebt.length.toString()),
+          const SizedBox(height: 9),
+          Text('Bank account: ' +
+              ((_choice['bank_name'] ?? '').isEmpty
+                  ? 'Not provided' : 'Prepared for future verification')),
+          const SizedBox(height: 16),
           CheckboxListTile(
             key: const Key('register-profile-consent'),
             value: _shareConsent,
+            controlAffinity: ListTileControlAffinity.leading,
             title: const Text('Client has explicitly authorized profile sharing'),
             onChanged: (v) => setState(() {
               _shareConsent = v == true; _review = false;
@@ -377,56 +483,106 @@ class _StaffClientRegistrationScreenState
           CheckboxListTile(
             key: const Key('register-credit-consent'),
             value: _creditConsent,
+            controlAffinity: ListTileControlAffinity.leading,
             title: const Text('Client has explicitly authorized credit checks'),
             onChanged: (v) => setState(() {
               _creditConsent = v == true; _review = false;
             }),
           ),
+          const SizedBox(height: 15),
           FilledButton.icon(
             key: const Key('register-review'),
-            onPressed: widget.staff.branchIds.isEmpty ? null : _prepareReview,
+            onPressed: _branch == null ? null : _prepareReview,
             icon: const Icon(Icons.fact_check_outlined),
-            label: const Text('Review details (no submission)'),
+            label: const Text('Confirm review (no submission)'),
           ),
           if (_review) ...[
             const SizedBox(height: 18),
-            Card(key: const Key('register-review-summary'),
-              child: Padding(padding: const EdgeInsets.all(18),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Registration review',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Client: ${_firstName.text.trim()} ${_lastName.text.trim()}'),
-                    Text('Branch: ${_branch ?? ''}'),
-                    Text('District: ${_district.text.trim()}'),
-                    Text('Profile sharing consent: ${_shareConsent ? 'Yes' : 'No'}'),
-                    Text('Credit-check consent: ${_creditConsent ? 'Yes' : 'No'}'),
-                    const SizedBox(height: 8),
-                    const Text('Identity and legacy-client duplication must be '
-                        'independently reviewed. No application, client account '
-                        'or loan is created from this screen.'),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      key: const Key('register-server-preflight'),
-                      onPressed: _serverBusy ? null : _validateOnServer,
-                      icon: const Icon(Icons.verified_user_outlined),
-                      label: Text(_serverBusy ? 'Validating...' :
-                          'Validate with secure gateway (no submission)'),
-                    ),
-                    if (_serverResult != null)
-                      Text(_serverResult!,
-                          key: const Key('register-server-result')),
-                  ],
-                ))),
+            BfsPanel(child: Column(
+              key: const Key('register-review-summary'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Review ready', style: TextStyle(
+                    fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                const Text('Identity and historical duplicates must be '
+                    'independently reviewed. This does not create a client '
+                    'or initiate a loan.'),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  key: const Key('register-server-preflight'),
+                  onPressed: _serverBusy ? null : _validateOnServer,
+                  icon: const Icon(Icons.verified_user_outlined),
+                  label: Text(_serverBusy ? 'Checking...' :
+                      'Validate with LoanHub gateway'),
+                ),
+                if (_serverResult != null)
+                  Text(_serverResult!,
+                      key: const Key('register-server-result')),
+              ],
+            )),
           ],
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
+          const SizedBox(height: 16),
+          const OutlinedButton.icon(
             onPressed: null,
             icon: Icon(Icons.lock_outline),
             label: Text('Submit registration — unavailable'),
           ),
-        ],
-      )),
+        ]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Register client'),
+      backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
+    body: SafeArea(child: Center(child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 760),
+      child: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: Text('Step ' + (_step + 1).toString() +
+                  ' of ' + _steps.length.toString(),
+                  style: const TextStyle(color: BatlokoaDesign.primary,
+                      fontWeight: FontWeight.w800))),
+              const BfsPill(label: 'PREPARATION ONLY'),
+            ]),
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: (_step + 1) / _steps.length,
+                minHeight: 5, borderRadius: BorderRadius.circular(8)),
+            const SizedBox(height: 15),
+            BfsSectionTitle(title: _steps[_step],
+                subtitle: 'Same five-stage sequence as LoanHub staff registration.'),
+          ]),
+        ),
+        Expanded(child: Form(key: _form,
+          child: ListView(
+            key: ValueKey(_step),
+            padding: BfsResponsive.pagePadding(context),
+            children: [_stage()],
+          ))),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Row(children: [
+            Expanded(child: OutlinedButton.icon(
+              onPressed: _step == 0 || _serverBusy ? null
+                  : () => setState(() {
+                      _step--; _review = false; _serverResult = null;
+                    }),
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('Previous'),
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: FilledButton.icon(
+              key: const Key('register-continue'),
+              onPressed: _step == 4 || _loadingBranches ||
+                  _serverBusy ? null : _nextStep,
+              icon: const Icon(Icons.chevron_right),
+              label: Text(_step == 3 ? 'Review' : 'Continue'),
+            )),
+          ]),
+        ),
+      ]),
     ))),
   );
 }
