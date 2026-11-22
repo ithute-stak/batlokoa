@@ -64,7 +64,11 @@ void main() {
       find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
     expect(submit.onPressed, isNull);
     expect(find.byKey(const Key('register-review-summary')), findsNothing);
-    await tester.ensureVisible(find.byKey(const Key('register-review')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('register-review')), 160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-review')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
