@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:batlokoa/staff_gateway.dart';
 import 'package:batlokoa/staff_portal.dart';
+import 'package:batlokoa/batlokoa_logo.dart';
 
 class FakeStaffGateway implements StaffGateway {
   StaffSession? current;
@@ -30,6 +31,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: StaffPortal(gateway: gateway)));
     await tester.pumpAndSettle();
     expect(find.text('Employee sign in'), findsOneWidget);
+    expect(find.text('Batlokoa Financial Services'), findsWidgets);
+    expect(find.byType(BatlokoaLogo), findsWidgets);
+    expect(find.text('We make Your Debt Affordable.'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('staff-phone')), '59000000');
     await tester.enterText(find.byKey(const Key('staff-password')), 'secretpass');
     await tester.ensureVisible(find.byKey(const Key('staff-login')));
