@@ -28,6 +28,10 @@ Map<String, dynamic> buildNewClientRegistrationPayload({
   final bank = optional(choices['bank_name']);
   final accountNumber = optional(extra['bank_account_number']);
   final accountHolder = optional(extra['bank_account_holder']);
+  if (bank == null && (accountNumber != null || accountHolder != null)) {
+    throw const FormatException(
+        'Bank details must not be silently discarded when bank is cleared');
+  }
   if (bank != null && (accountNumber == null || accountHolder == null)) {
     throw const FormatException('Complete bank account details are required');
   }
