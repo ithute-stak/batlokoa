@@ -40,6 +40,8 @@ void main() {
     expect(find.text('Branch ID: verified-branch'), findsOneWidget);
     expect(find.text('Register client'), findsOneWidget);
     expect(find.byKey(const Key('staff-find-clients')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('staff-logout')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('staff-logout')));
     await tester.pumpAndSettle();
     expect(find.text('Employee sign in'), findsOneWidget);
