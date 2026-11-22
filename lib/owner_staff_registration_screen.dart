@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
+import 'batlokoa_design.dart';
+import 'bfs_widgets.dart';
 
 /// Owner-only employee management; never grants client or lending write rights.
 class OwnerStaffRegistrationScreen extends StatefulWidget {
@@ -111,55 +113,67 @@ class _OwnerStaffRegistrationScreenState extends State<OwnerStaffRegistrationScr
 
   @override
   Widget build(BuildContext context) {
-    const navy = Color(0xFF12233F);
     return Scaffold(
       appBar: AppBar(title: const Text('Register employee'),
-        backgroundColor: navy, foregroundColor: Colors.white),
+        backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
       body: SafeArea(child: Center(child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
-        child: ListView(padding: const EdgeInsets.all(18), children: [
-          Text('New employee account',
-            style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 5),
-          const Text('Set the employee identity, permission role and assigned branch.'),
+        child: ListView(padding: const EdgeInsets.all(20), children: [
+          const BfsSectionTitle(eyebrow: 'PEOPLE & ACCESS',
+            title: 'New employee account',
+            subtitle: 'Set up a team member and assign their LoanHub permissions.'),
           if (_loading) const LinearProgressIndicator(),
           if (_error != null) Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Text(_error!, key: const Key('owner-staff-error'),
               style: TextStyle(color: Theme.of(context).colorScheme.error))),
           if (_success != null) Text(_success!, key: const Key('owner-staff-success')),
-          const SizedBox(height: 16),
-          Text('Register an employee',
-            style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          const Text('Account creation requires separate release approval '
-            'and a verified owner account. This pilot may permit viewing '
-            'employees while account creation is unavailable.',
-            style: TextStyle(color: Color(0xFF667085))),
-          const SizedBox(height: 12),
+          const SizedBox(height: 21),
+          const BfsPanel(child: Row(children: [
+            Icon(Icons.verified_user_outlined,
+              color: BatlokoaDesign.accent, size: 24),
+            SizedBox(width: 12),
+            Expanded(child: Text('Employee creation is available only '
+              'after separate LoanHub approval and owner verification.',
+              style: TextStyle(color: BatlokoaDesign.silver,
+                height: 1.5, fontSize: 12))),
+          ])),
+          const SizedBox(height: 23),
           Form(key: _form, child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const _FormSection(number: '01', title: 'Personal details',
+                subtitle: 'Details must match the employee identity.'),
+              const SizedBox(height: 16),
               TextFormField(key: const Key('staff-first-name'),
-                controller: _first, decoration: const InputDecoration(labelText: 'First name'),
+                controller: _first, textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'First name',
+                  prefixIcon: Icon(Icons.person_outline)),
                 validator: (v) => v == null || v.trim().isEmpty ? 'First name required' : null),
               const SizedBox(height: 10),
               TextFormField(key: const Key('staff-last-name'),
-                controller: _last, decoration: const InputDecoration(labelText: 'Last name'),
+                controller: _last, textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Last name',
+                  prefixIcon: Icon(Icons.person_outline)),
                 validator: (v) => v == null || v.trim().isEmpty ? 'Last name required' : null),
               const SizedBox(height: 10),
               TextFormField(key: const Key('staff-phone-number'),
                 controller: _phone, keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Employee phone number'),
+                decoration: const InputDecoration(labelText: 'Employee phone number',
+                  prefixIcon: Icon(Icons.phone_outlined)),
                 validator: (v) => RegExp(r'^\+?[0-9]{8,15}$').hasMatch(v?.trim() ?? '')
                     ? null : 'Enter a valid phone number'),
               const SizedBox(height: 10),
               TextFormField(key: const Key('staff-email'),
                 controller: _email, keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email (optional)'),
+                decoration: const InputDecoration(labelText: 'Email (optional)',
+                  prefixIcon: Icon(Icons.mail_outline)),
                 validator: (v) => v == null || v.trim().isEmpty ||
                     (v.contains('@') && v.contains('.')) ? null : 'Invalid email'),
-              const SizedBox(height: 10),
+              const SizedBox(height: 28),
+              const _FormSection(number: '02', title: 'Permissions',
+                subtitle: 'Assign the correct role and branch.'),
+              const SizedBox(height: 17),
               DropdownButtonFormField<String>(
                 key: const Key('staff-role'), value: _role,
                 decoration: const InputDecoration(labelText: 'Role'),
@@ -189,14 +203,19 @@ class _OwnerStaffRegistrationScreenState extends State<OwnerStaffRegistrationScr
                 ),
                 const SizedBox(height: 10),
               ],
+              const SizedBox(height: 24),
+              const _FormSection(number: '03', title: 'Account security',
+                subtitle: 'Use a unique initial password.'),
+              const SizedBox(height: 15),
               TextFormField(key: const Key('staff-initial-password'),
                 controller: _password, obscureText: true,
                 autocorrect: false, enableSuggestions: false,
                 decoration: const InputDecoration(labelText: 'Initial password',
-                  helperText: 'Use a unique password, communicated privately.'),
+                  prefixIcon: Icon(Icons.lock_outline),
+                  helperText: 'Share it privately. Never reuse another account password.'),
                 validator: (v) => v == null || v.length < 8
                     ? 'Minimum 8 characters' : null),
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
               CheckboxListTile(key: const Key('staff-confirm'),
                 value: _confirmed,
                 contentPadding: EdgeInsets.zero,
@@ -204,16 +223,39 @@ class _OwnerStaffRegistrationScreenState extends State<OwnerStaffRegistrationScr
                 controlAffinity: ListTileControlAffinity.leading,
                 onChanged: _creating ? null : (v) =>
                     setState(() => _confirmed = v ?? false)),
-              const SizedBox(height: 10),
-              FilledButton.icon(
+              const SizedBox(height: 18),
+              SizedBox(height: 54, child: FilledButton.icon(
                 key: const Key('owner-create-staff'),
                 onPressed: _loading || _creating ? null : _submit,
                 icon: const Icon(Icons.person_add_alt_1),
-                label: Text(_creating ? 'Registering...' : 'Register employee')),
+                label: Text(_creating ? 'Registering...' : 'Register employee'))),
             ],
           )),
         ]),
       ))),
     );
   }
+}
+
+class _FormSection extends StatelessWidget {
+  final String number, title, subtitle;
+  const _FormSection({required this.number, required this.title,
+    required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Container(width: 39, height: 39, alignment: Alignment.center,
+      decoration: BoxDecoration(color: BatlokoaDesign.navy,
+        borderRadius: BorderRadius.circular(12)),
+      child: Text(number, style: const TextStyle(color: Colors.white,
+        fontWeight: FontWeight.w800, fontSize: 13))),
+    const SizedBox(width: 12),
+    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: const TextStyle(color: BatlokoaDesign.navy,
+        fontWeight: FontWeight.w800, fontSize: 17)),
+      const SizedBox(height: 3),
+      Text(subtitle, style: const TextStyle(color: BatlokoaDesign.silver,
+        fontSize: 12)),
+    ])),
+  ]);
 }
