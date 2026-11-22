@@ -46,45 +46,82 @@ class BfsActionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     const navy = BatlokoaDesign.navy;
     const red = BatlokoaDesign.primary;
-    return Material(
-      color: disabled ? const Color(0xFFF7F8FA)
-          : primary ? navy : Colors.white,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: disabled ? const Color(0xFFE7E9ED)
-          : primary ? navy : const Color(0xFFE2E7EE)),
-        borderRadius: BorderRadius.circular(20)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: disabled ? null : onPressed,
-        child: Padding(
-          padding: const EdgeInsets.all(17),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Container(
-                width: 46, height: 46, alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: primary ? const Color(0xFF34506E)
-                    : disabled ? const Color(0xFFE9ECEF)
-                    : const Color(0xFFFFE9EA),
-                  borderRadius: BorderRadius.circular(14)),
-                child: Icon(icon, size: 23, color: primary ? Colors.white
-                  : disabled ? BatlokoaDesign.silver : red)),
-              Icon(disabled ? Icons.lock_outline_rounded
-                : Icons.arrow_outward_rounded, size: 20,
-                color: primary ? Colors.white70 : BatlokoaDesign.silver),
-            ]),
-            const SizedBox(height: 18),
-            Text(title, style: TextStyle(
-              color: primary ? Colors.white : navy,
-              fontWeight: FontWeight.w800, fontSize: 16)),
-            const SizedBox(height: 6),
-            Text(description, maxLines: 3, overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: primary ? const Color(0xFFE0EAF5)
-                : BatlokoaDesign.silver, fontSize: 12, height: 1.5)),
-          ]),
-        ),
-      ),
+    final foreground = primary ? Colors.white : navy;
+    final descriptionColor = primary
+        ? const Color(0xFFE0EAF5) : BatlokoaDesign.silver;
+
+    Widget leading() => Container(
+      width: 46, height: 46, alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: primary ? const Color(0xFF34506E)
+          : disabled ? const Color(0xFFE9ECEF) : const Color(0xFFFFE9EA),
+        borderRadius: BorderRadius.circular(14)),
+      child: Icon(icon, size: 23, color: primary ? Colors.white
+        : disabled ? BatlokoaDesign.silver : red),
     );
+
+    return LayoutBuilder(builder: (context, constraints) {
+      // Cards become compact horizontal rows on narrow phones; avoid
+      // overflowing a two-column grid with 200% accessibility text.
+      final horizontal = constraints.maxWidth >= 280;
+      return Material(
+        color: disabled ? const Color(0xFFF7F8FA)
+            : primary ? navy : Colors.white,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: disabled ? const Color(0xFFE7E9ED)
+            : primary ? navy : const Color(0xFFE2E7EE)),
+          borderRadius: BorderRadius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: disabled ? null : onPressed,
+          child: Padding(
+            padding: EdgeInsets.all(horizontal ? 15 : 14),
+            child: horizontal
+              ? Row(children: [
+                  leading(),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(title, maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: foreground,
+                          fontWeight: FontWeight.w800, fontSize: 16)),
+                      const SizedBox(height: 4),
+                      Text(description, maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: descriptionColor,
+                          fontSize: 12, height: 1.5)),
+                    ])),
+                  const SizedBox(width: 8),
+                  Icon(disabled ? Icons.lock_outline_rounded
+                    : Icons.arrow_forward_ios_rounded, size: 17,
+                    color: primary ? Colors.white70 : BatlokoaDesign.silver),
+                ])
+              : Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        leading(),
+                        Icon(disabled ? Icons.lock_outline_rounded
+                          : Icons.arrow_outward_rounded, size: 20,
+                          color: primary ? Colors.white70 : BatlokoaDesign.silver),
+                      ]),
+                    const SizedBox(height: 12),
+                    Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: foreground,
+                        fontWeight: FontWeight.w800, fontSize: 16)),
+                    const SizedBox(height: 5),
+                    Text(description, maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: descriptionColor,
+                        fontSize: 12, height: 1.4)),
+                  ]),
+          ),
+        ),
+      );
+    });
   }
 }
 
