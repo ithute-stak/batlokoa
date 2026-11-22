@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
+import 'staff_client_registration_payload.dart';
 import 'batlokoa_design.dart';
 import 'bfs_responsive.dart';
 import 'bfs_widgets.dart';
@@ -451,6 +452,66 @@ class _StaffClientRegistrationScreenState
     }
   }
 
+  /// Maps all supported fields, including debts and bank details, without
+  /// saving a browser draft or mistaking identity preflight for authorization.
+  Map<String, dynamic> _completeRegistrationPayload() =>
+      buildNewClientRegistrationPayload(
+        branchId: _branch!,
+        firstName: _firstName.text,
+        lastName: _lastName.text,
+        phone: _phone.text,
+        dateOfBirth: _birthDate.text,
+        gender: _gender.text,
+        district: _district.text,
+        employmentStatus: _employment.text,
+        nationalId: _nationalId.text,
+        passportNumber: _passport.text,
+        extra: {for (final entry in _extra.entries) entry.key: entry.value.text},
+        choices: _choice,
+        monthlyIncome: _income.text,
+        hasExistingLoans: _hasExistingLoans,
+        salaryAccount: _salaryAccount,
+        externalDebts: [
+          for (final debt in _externalDebt)
+            {for (final entry in debt.entries) entry.key: entry.value.text},
+        ],
+        profileConsent: _shareConsent,
+        creditConsent: _creditConsent,
+      );
+
+  // The current LoanHub release is not approved. Keep this false until an
+  // independently reviewed release supplies real server-side authorization.
+  bool get _clientWritesReleased => false;
+  bool _savingClient = false;
+  String? _clientSaveResult;
+
+  Future<void> _saveNewClient() async {
+    if (!_clientWritesReleased || !_review || !_identityChecked ||
+        _checkedNationalId != _nationalId.text.trim() ||
+        _checkedBranch != _branch || _branch == null || _savingClient ||
+        widget.gateway is! StaffNewClientCreationGateway) return;
+    if (_form.currentState?.validate() != true) return;
+    setState(() { _savingClient = true; _clientSaveResult = null; });
+    try {
+      final payload = _completeRegistrationPayload();
+      final receipt = await (widget.gateway as StaffNewClientCreationGateway)
+          .createNewClient(payload,
+            idempotencyKey: 'batlokoa-' +
+                DateTime.now().microsecondsSinceEpoch.toString() + '-register');
+      if (!mounted) return;
+      setState(() {
+        _clientSaveResult = receipt.replayed
+            ? 'Previous registration confirmed in LoanHub.'
+            : 'Client registered in LoanHub. Account: ' + receipt.clientAccountId;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _clientSaveResult =
+          'LoanHub did not confirm registration. No success is claimed.');
+    } finally {
+      if (mounted) setState(() => _savingClient = false);
+    }
+  }
+
   @override
   void dispose() {
     for (final controller in [
@@ -794,10 +855,15 @@ class _StaffClientRegistrationScreenState
           )),
           const SizedBox(height: 16),
           OutlinedButton.icon(
-            onPressed: null,
-            icon: Icon(Icons.lock_outline),
-            label: Text('Submit registration — unavailable'),
+            key: const Key('register-save-client'),
+            onPressed: _clientWritesReleased && _review && !_savingClient
+                ? _saveNewClient : null,
+            icon: const Icon(Icons.lock_outline),
+            label: Text(_savingClient ? 'Saving client...' :
+                'Save client to LoanHub — awaiting release'),
           ),
+          if (_clientSaveResult != null)
+            Text(_clientSaveResult!, key: const Key('register-save-result')),
         ]);
     }
   }
