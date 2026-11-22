@@ -169,9 +169,9 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.textContaining('new-client registration is not released'), findsOneWidget);
-    expect(find.text('Submit registration — unavailable'), findsOneWidget);
+    expect(find.text('Save client to LoanHub — awaiting release'), findsOneWidget);
     final submit = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
+      find.widgetWithText(OutlinedButton, 'Save client to LoanHub — awaiting release'));
     expect(submit.onPressed, isNull);
     expect(find.textContaining('SYNTHETIC-NATIONAL-ID'), findsNothing);
   });
