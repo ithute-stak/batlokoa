@@ -183,6 +183,10 @@ abstract class StaffNationalIdGateway {
   });
 }
 
+abstract class StaffRegistrationBranchGateway {
+  Future<List<Map<String, String>>> registrationBranches();
+}
+
 /// Read-only options are sourced from LoanHub, not browser constants.
 abstract class StaffRegistrationEmployerGateway {
   Future<List<Map<String, String>>> registrationEmployers();
@@ -222,7 +226,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -323,6 +327,37 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       clients.add(row);
     }
     return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
+  Future<List<Map<String, String>>> registrationBranches() async {
+    final response = await client.get(
+      _url('/api/v1/staff/clients/registration-branches'),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
+    );
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('LoanHub branch directory unavailable');
+    }
+    final parsed = jsonDecode(response.body);
+    if (parsed is! Map<String, dynamic> ||
+        parsed['branches'] is! List || (parsed['branches'] as List).length > 100) {
+      throw const FormatException('Invalid registration branches');
+    }
+    final rows = <Map<String, String>>[];
+    final ids = <String>{};
+    for (final value in parsed['branches'] as List) {
+      if (value is! Map<String, dynamic> || value['id'] is! String ||
+          value['name'] is! String) {
+        throw const FormatException('Invalid authorized branch');
+      }
+      final id = value['id'] as String;
+      final name = value['name'] as String;
+      if (id.isEmpty || name.isEmpty || !ids.add(id)) {
+        throw const FormatException('Untrusted branch directory');
+      }
+      rows.add({'id': id, 'name': name});
+    }
+    return List<Map<String, String>>.unmodifiable(rows);
   }
 
   @override
