@@ -5,6 +5,7 @@ Map<String, dynamic> build({
   bool loans = false,
   String bank = '',
   bool orphanBank = false,
+  String incomeDay = '25',
   List<Map<String, String>> debts = const [],
 }) => buildNewClientRegistrationPayload(
   branchId: '123e4567-e89b-42d3-a456-426614174111',
@@ -21,7 +22,7 @@ Map<String, dynamic> build({
     'middle_name': 'Test',
     'employer_name': 'Synthetic employer',
     'physical_address': 'Synthetic address',
-    'income_day': '25',
+    'income_day': incomeDay,
     'existing_loan_total': '500.00',
     if (bank.isNotEmpty || orphanBank) 'bank_account_holder': 'Synthetic Client',
     if (bank.isNotEmpty || orphanBank) 'bank_account_number': '1234567890',
@@ -74,6 +75,14 @@ void main() {
     expect(bank['bank_name'], 'NB');
     expect(bank['account_number'], '1234567890');
     expect(bank['salary_account'], true);
+  });
+
+  test('invalid income day is never converted into omitted payroll data', () {
+    expect(() => build(incomeDay: 'unknown'), throwsFormatException);
+    expect(() => build(incomeDay: '0'), throwsFormatException);
+    expect(() => build(incomeDay: '32'), throwsFormatException);
+    expect(build(incomeDay: '')['income_day'], isNull);
+    expect(build(incomeDay: '31')['income_day'], 31);
   });
 
   test('cleared bank selection cannot silently omit entered account details', () {
