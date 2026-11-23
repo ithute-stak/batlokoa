@@ -263,7 +263,7 @@ class _StaffClientRegistrationScreenState
       setState(() {
         _identityChecked = false;
         _possibleExistingIdentity = false;
-        _identityMessage = 'Enter a valid National ID and select the branch.';
+        _identityMessage = 'Enter a valid National ID; an authorized branch must be available.';
       });
       return;
     }
@@ -400,8 +400,8 @@ class _StaffClientRegistrationScreenState
   @override
   void initState() {
     super.initState();
-    if (!widget.staff.companyWide && widget.staff.branchIds.length == 1) {
-      _branch = widget.staff.branchIds.single;
+    if (!widget.staff.companyWide && widget.staff.branchIds.isNotEmpty) {
+      _branch = widget.staff.branchIds.first;
     }
     _gender.text = 'male';
     _employment.text = 'employed';
@@ -423,6 +423,9 @@ class _StaffClientRegistrationScreenState
               .where((v) => v['id'] is String && v['name'] is String)
               .map((v) => {'id': v['id'] as String, 'name': v['name'] as String})
               .toList();
+          if (_branch == null && _availableBranches.isNotEmpty) {
+            _branch = _availableBranches.first['id'];
+          }
           _loadingBranches = false;
         });
       } catch (_) {
@@ -604,26 +607,6 @@ class _StaffClientRegistrationScreenState
         const BfsPanel(child: Text('An authorized registration branch is '
             'required before checking the ID. Contact your administrator '
             'if no branch is available.')),
-      if (_availableBranches.isNotEmpty)
-        Padding(padding: const EdgeInsets.only(bottom: 15),
-          child: DropdownButtonFormField<String>(
-            key: const Key('register-branch'),
-            value: _branch != null &&
-                _availableBranches.any((b) => b['id'] == _branch)
-                    ? _branch : null,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Registration branch *'),
-            items: [
-              for (final b in _availableBranches)
-                DropdownMenuItem<String>(value: b['id'],
-                  child: Text(b['name']!, maxLines: 1,
-                      overflow: TextOverflow.ellipsis)),
-            ],
-            onChanged: (v) {
-              setState(() => _branch = v);
-              _identityEdited();
-            },
-          )),
       const SizedBox(height: 10),
       SizedBox(height: 52, child: FilledButton.icon(
         key: const Key('register-check-national-id'),
@@ -678,6 +661,38 @@ class _StaffClientRegistrationScreenState
     switch (_step) {
       case 0:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const BfsPanel(child: Text(
+            'The National ID was checked across all LoanHub companies. '
+            'Choose the Batlokoa branch that will hold this account. '
+            'Branch assignment never limits the identity search.',
+          )),
+      if (_availableBranches.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(bottom: 15),
+          child: DropdownButtonFormField<String>(
+            key: const Key('register-branch'),
+            value: _branch != null &&
+                _availableBranches.any((b) => b['id'] == _branch)
+                    ? _branch : null,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Registration branch (account assignment) *',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              for (final b in _availableBranches)
+                DropdownMenuItem<String>(value: b['id'],
+                  child: Text(b['name']!, maxLines: 1,
+                      overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) {
+              setState(() => _branch = v);
+              // Screening was global; a different authorized branch does not
+              // change the National ID result. LoanHub rechecks scope when
+              // the final registration request is independently approved.
+              _checkedBranch = v;
+              _review = false;
+            },
+          )),
           _field('First name', _firstName, validate: _required),
           _extraField('middle_name', 'Middle name (optional)'),
           _field('Last name', _lastName, validate: _required),
