@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
+import 'staff_client_registration_payload.dart';
 import 'batlokoa_design.dart';
 import 'bfs_responsive.dart';
 import 'bfs_widgets.dart';
@@ -483,6 +484,39 @@ class _StaffClientRegistrationScreenState
     return null;
   }
 
+  // Build the same full contract the reviewed LoanHub new-only writer expects.
+  // Local-only: this is deliberately NOT submitted, cached or logged.
+  Map<String, dynamic> _completeRegistrationPayload() {
+    if (_branch == null) {
+      throw const FormatException('An authorized branch is required');
+    }
+    return buildNewClientRegistrationPayload(
+      branchId: _branch!,
+      firstName: _firstName.text,
+      lastName: _lastName.text,
+      phone: _phone.text,
+      dateOfBirth: _birthDate.text,
+      gender: _gender.text,
+      district: _district.text,
+      employmentStatus: _employment.text,
+      nationalId: _nationalId.text,
+      passportNumber: _passport.text,
+      extra: {
+        for (final entry in _extra.entries) entry.key: entry.value.text,
+      },
+      choices: Map<String, String>.from(_choice),
+      monthlyIncome: _income.text,
+      hasExistingLoans: _hasExistingLoans,
+      salaryAccount: _salaryAccount,
+      externalDebts: [
+        for (final debt in _externalDebt)
+          {for (final entry in debt.entries) entry.key: entry.value.text},
+      ],
+      profileConsent: _shareConsent,
+      creditConsent: _creditConsent,
+    );
+  }
+
   void _prepareReview() {
     if (!_identityChecked ||
         _checkedNationalId != _nationalId.text.trim() ||
@@ -499,6 +533,20 @@ class _StaffClientRegistrationScreenState
       setState(() => _review = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Select an assigned branch and provide national ID or passport.'),
+      ));
+      return;
+    }
+    try {
+      // Catch any financial or banking details the full registration schema
+      // would otherwise silently discard before showing the review as ready.
+      final captured = _completeRegistrationPayload();
+      if (captured['branch_id'] != _branch) {
+        throw const FormatException('Registration branch changed');
+      }
+    } on FormatException catch (error) {
+      setState(() => _review = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error.message),
       ));
       return;
     }
