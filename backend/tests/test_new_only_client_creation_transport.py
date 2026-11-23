@@ -117,7 +117,7 @@ def test_unconfirmed_upstream_result_is_not_reported_successful():
     "https://operator:password@loanhub.test",
     "https://loanhub.test:bad-port",
     "https://loanhub.test@evil.example",
-    "https://loanhub.test\\nevil.example",
+    "https://loanhub.test\nevil.example",
 ])
 def test_untrusted_upstream_origin_never_receives_token_or_identity(origin):
     client = RecordingClient()
