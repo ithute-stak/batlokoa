@@ -80,7 +80,11 @@ def post_new_only_client(
         raise ClientCreationUnavailable("Valid idempotency key required")
     if not isinstance(loanhub_access_token, str) or not loanhub_access_token:
         raise ClientCreationUnavailable("Authenticated upstream token required")
-    if not isinstance(loanhub_origin, str):
+    if (
+        not isinstance(loanhub_origin, str)
+        or not loanhub_origin.isascii()
+        or any(ord(char) <= 32 or ord(char) == 127 for char in loanhub_origin)
+    ):
         raise ClientCreationUnavailable("Trusted HTTPS LoanHub origin required")
     try:
         parsed_origin = urlsplit(loanhub_origin)
