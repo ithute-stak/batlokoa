@@ -9,11 +9,20 @@ const assigned = StaffSession(
   branchIds: ['synthetic-branch'], companyWide: false,
 );
 
-class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway {
+class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway {
   bool match;
   bool fail;
   int checks = 0;
   int readinessChecks = 0;
+  @override
+  Future<List<Map<String, String>>> registrationEmployers() async => [
+    {
+      'id': '123e4567-e89b-42d3-a456-426614174222',
+      'code': 'LMPS',
+      'name': 'Synthetic employer group',
+    },
+  ];
+
   @override
   Future<StaffRegistrationReadiness> registrationReadiness() async {
     readinessChecks++;
@@ -123,6 +132,7 @@ void main() {
     expect(find.text('Step 1 of 6'), findsOneWidget);
     expect(find.byKey(const Key('register-national-id')), findsOneWidget);
     expect(find.byKey(const Key('register-first-name')), findsNothing);
+    expect(find.byKey(const Key('register-branch')), findsNothing);
     final next = tester.widget<FilledButton>(
       find.byKey(const Key('register-continue')));
     expect(next.onPressed, isNull);
@@ -170,6 +180,7 @@ void main() {
     await showForm(tester, gateway);
     await unlock(tester, gateway);
     expect(find.text('Step 2 of 6'), findsOneWidget);
+    expect(find.byKey(const Key('register-branch')), findsOneWidget);
     expect(find.byKey(const Key('register-find-existing-client')), findsNothing);
     await enter(tester, 'first-name', 'Palesa');
     await enter(tester, 'last-name', 'Mokoena');
@@ -180,6 +191,17 @@ void main() {
     await enter(tester, 'district', 'Maseru');
     await continueStep(tester);
     expect(find.text('Employment and loans'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('register-employment-type')));
+    await tester.tap(find.byKey(const Key('register-employment-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Government').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('register-employer-group')));
+    await tester.tap(find.byKey(const Key('register-employer-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Synthetic employer group').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register-cdas-employee-number')), findsOneWidget);
     await enter(tester, 'monthly-income', '1250.00');
     await continueStep(tester);
     expect(find.text('Banking details'), findsOneWidget);
