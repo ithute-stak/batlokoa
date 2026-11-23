@@ -9,11 +9,19 @@ const assigned = StaffSession(
   branchIds: ['synthetic-branch'], companyWide: false,
 );
 
-class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway {
+class MockIdentityGateway implements StaffGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway {
   bool match;
   bool fail;
   int checks = 0;
   int readinessChecks = 0;
+  @override
+  Future<List<Map<String, String>>> registrationBranches() async => [
+    {
+      'id': 'synthetic-branch',
+      'name': 'Maseru test branch',
+    },
+  ];
+
   @override
   Future<List<Map<String, String>>> registrationEmployers() async => [
     {
@@ -181,6 +189,7 @@ void main() {
     await unlock(tester, gateway);
     expect(find.text('Step 2 of 6'), findsOneWidget);
     expect(find.byKey(const Key('register-branch')), findsOneWidget);
+    expect(find.text('Maseru test branch'), findsOneWidget);
     expect(find.byKey(const Key('register-find-existing-client')), findsNothing);
     await enter(tester, 'first-name', 'Palesa');
     await enter(tester, 'last-name', 'Mokoena');
