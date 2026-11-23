@@ -93,6 +93,29 @@ Future<void> unlock(WidgetTester tester, MockIdentityGateway gateway) async {
 }
 
 void main() {
+  testWidgets('mobile keyboard reveals National ID without fixed header/footer',
+      (tester) async {
+    final gateway = MockIdentityGateway();
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: Size(390, 720),
+          viewInsets: EdgeInsets.only(bottom: 390),
+        ),
+        child: StaffClientRegistrationScreen(staff: assigned, gateway: gateway),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register-national-id')), findsOneWidget);
+    expect(find.text('Step 1 of 6'), findsNothing);
+    expect(find.byKey(const Key('register-continue')), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('register-national-id')));
+    await tester.enterText(
+        find.byKey(const Key('register-national-id')), 'SYNTHETIC-ID');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register-national-id')), findsOneWidget);
+  });
+
   testWidgets('National ID is the first input, no name fields shown', (tester) async {
     final gateway = MockIdentityGateway();
     await showForm(tester, gateway);
