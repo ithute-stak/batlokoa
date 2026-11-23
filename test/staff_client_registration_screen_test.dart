@@ -228,6 +228,19 @@ void main() {
       find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
     expect(submit.onPressed, isNull);
     expect(find.textContaining('SYNTHETIC-NATIONAL-ID'), findsNothing);
+    // Review must build the complete LoanHub new-only payload locally.
+    // It must not submit anything or display the protected identity value.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('register-review')), 220,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(find.byKey(const Key('register-review')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('register-review')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
+    expect(find.textContaining('SYNTHETIC-NATIONAL-ID'), findsNothing);
+    expect(find.text('Submit registration — unavailable'), findsOneWidget);
   });
 
   testWidgets('editing ID invalidates a previous successful check', (tester) async {
