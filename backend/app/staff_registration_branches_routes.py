@@ -7,8 +7,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from .loanhub_staff_verifier import StaffVerificationUnavailable
-from .staff_login_routes import COOKIE, NO_STORE, _config, _same_origin
+from .staff_login_routes import COOKIE, NO_STORE, _config
 from .staff_registration_employer_routes import _ALLOWED_ROLES, _fail
+from .staff_registration_read_origin import safe_staff_read_origin
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ def registration_branches(request: Request):
     cfg = _config(request)
     if cfg is None:
         return _fail("DIRECTORY_UNAVAILABLE", 503)
-    if not _same_origin(request, cfg.public_origin):
+    if not safe_staff_read_origin(request, cfg.public_origin):
         return _fail("FORBIDDEN_ORIGIN", 403)
     cookie = request.cookies.get(COOKIE, "")
     record = cfg.store.resolve(cookie)
