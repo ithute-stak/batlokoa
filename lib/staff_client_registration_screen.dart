@@ -419,30 +419,38 @@ class _StaffClientRegistrationScreenState
   }
 
   Future<void> _loadBranches() async {
-    if (widget.staff.companyWide &&
-        widget.gateway is OwnerStaffManagementGateway) {
-      setState(() => _loadingBranches = true);
-      try {
-        final items = await (widget.gateway as OwnerStaffManagementGateway)
-            .ownerBranches();
-        if (!mounted) return;
-        setState(() {
-          _availableBranches = items
-              .where((v) => v['id'] is String && v['name'] is String)
-              .map((v) => {'id': v['id'] as String, 'name': v['name'] as String})
-              .toList();
-          if (_branch == null && _availableBranches.isNotEmpty) {
-            _branch = _availableBranches.first['id'];
-          }
-          _loadingBranches = false;
-        });
-      } catch (_) {
-        if (mounted) setState(() => _loadingBranches = false);
-      }
-    } else {
-      _availableBranches = [
-        for (final id in widget.staff.branchIds) {'id': id, 'name': id},
-      ];
+    if (widget.gateway is! StaffRegistrationBranchGateway) {
+      setState(() {
+        _availableBranches = const [];
+        _branch = null;
+      });
+      return;
+    }
+    setState(() => _loadingBranches = true);
+    try {
+      final branches = await
+          (widget.gateway as StaffRegistrationBranchGateway)
+              .registrationBranches();
+      if (!mounted) return;
+      // The BFF already verifies company and role; the browser additionally
+      // restricts non-company-wide employees to their assigned branches.
+      final authorized = branches.where((item) =>
+          widget.staff.companyWide ||
+          widget.staff.branchIds.contains(item['id'])).toList();
+      setState(() {
+        _availableBranches = authorized;
+        if (!_availableBranches.any((item) => item['id'] == _branch)) {
+          _branch = _availableBranches.isNotEmpty
+              ? _availableBranches.first['id'] : null;
+        }
+        _loadingBranches = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _availableBranches = const [];
+        _branch = null;
+        _loadingBranches = false;
+      });
     }
   }
 
