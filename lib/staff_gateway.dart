@@ -183,6 +183,15 @@ abstract class StaffNationalIdGateway {
   });
 }
 
+abstract class StaffRegistrationBranchGateway {
+  Future<List<Map<String, String>>> registrationBranches();
+}
+
+/// Read-only options are sourced from LoanHub, not browser constants.
+abstract class StaffRegistrationEmployerGateway {
+  Future<List<Map<String, String>>> registrationEmployers();
+}
+
 /// Owner-only staff management, separate from client registration.
 abstract class OwnerStaffManagementGateway {
   Future<List<Map<String, dynamic>>> ownerBranches();
@@ -217,7 +226,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -318,6 +327,69 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       clients.add(row);
     }
     return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
+  Future<List<Map<String, String>>> registrationBranches() async {
+    final response = await client.get(
+      _url('/api/v1/staff/clients/registration-branches'),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
+    );
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('LoanHub branch directory unavailable');
+    }
+    final parsed = jsonDecode(response.body);
+    if (parsed is! Map<String, dynamic> ||
+        parsed['branches'] is! List || (parsed['branches'] as List).length > 100) {
+      throw const FormatException('Invalid registration branches');
+    }
+    final rows = <Map<String, String>>[];
+    final ids = <String>{};
+    for (final value in parsed['branches'] as List) {
+      if (value is! Map<String, dynamic> || value['id'] is! String ||
+          value['name'] is! String) {
+        throw const FormatException('Invalid authorized branch');
+      }
+      final id = value['id'] as String;
+      final name = value['name'] as String;
+      if (id.isEmpty || name.isEmpty || !ids.add(id)) {
+        throw const FormatException('Untrusted branch directory');
+      }
+      rows.add({'id': id, 'name': name});
+    }
+    return List<Map<String, String>>.unmodifiable(rows);
+  }
+
+  @override
+  Future<List<Map<String, String>>> registrationEmployers() async {
+    final response = await client.get(
+      _url('/api/v1/staff/clients/registration-employers'),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
+    );
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('LoanHub employer directory unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['employers'] is! List ||
+        (data['employers'] as List).length > 500) {
+      throw const FormatException('Invalid employer directory');
+    }
+    final result = <Map<String, String>>[];
+    final seen = <String>{};
+    for (final row in data['employers'] as List) {
+      if (row is! Map<String, dynamic> || row['id'] is! String ||
+          row['code'] is! String || row['name'] is! String) {
+        throw const FormatException('Invalid employer option');
+      }
+      final id = row['id'] as String;
+      final code = row['code'] as String;
+      final name = row['name'] as String;
+      if (id.isEmpty || code.isEmpty || name.isEmpty || !seen.add(id)) {
+        throw const FormatException('Duplicate or empty employer option');
+      }
+      result.add({'id': id, 'code': code, 'name': name});
+    }
+    return List<Map<String, String>>.unmodifiable(result);
   }
 
   @override
