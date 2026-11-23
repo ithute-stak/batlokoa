@@ -85,6 +85,40 @@ void main() {
     expect(build(incomeDay: '31')['income_day'], 31);
   });
 
+  test('LoanHub employer and CDAS selections remain in new-only payload', () {
+    final result = buildNewClientRegistrationPayload(
+      branchId: '123e4567-e89b-42d3-a456-426614174111',
+      firstName: 'Synthetic',
+      lastName: 'Client',
+      phone: '59000001',
+      dateOfBirth: '1991-05-01',
+      gender: 'female',
+      district: 'Maseru',
+      employmentStatus: 'employed',
+      nationalId: 'TEST-ONLY-NOT-REAL',
+      passportNumber: '',
+      extra: {
+        'employer_name': 'Synthetic work group',
+        'cdas_employee_number': 'TEST-PAYROLL-NOT-REAL',
+      },
+      choices: {
+        'employment_type': 'government',
+        'employer_group_id': '123e4567-e89b-42d3-a456-426614174222',
+      },
+      monthlyIncome: '6000',
+      hasExistingLoans: false,
+      salaryAccount: false,
+      externalDebts: const [],
+      profileConsent: true,
+      creditConsent: false,
+    );
+    expect(result['employment_type'], 'government');
+    expect(result['employer_group_id'],
+        '123e4567-e89b-42d3-a456-426614174222');
+    expect(result['employer_name'], 'Synthetic work group');
+    expect(result['cdas_employee_number'], 'TEST-PAYROLL-NOT-REAL');
+  });
+
   test('cleared bank selection cannot silently omit entered account details', () {
     expect(() => build(orphanBank: true), throwsFormatException);
   });
