@@ -32,6 +32,13 @@ class RecordingClient:
         self.calls.append((url, kwargs))
         return httpx.Response(self.status, json=self.json_body)
 
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return httpx.Response(200, json={
+            "id": str(ACCOUNT), "company_id": str(COMPANY),
+            "branch_id": str(BRANCH),
+        })
+
 
 def payload():
     return {
@@ -75,13 +82,16 @@ def test_test_only_authorized_transport_uses_correct_new_only_path():
     receipt = invoke(client, independently_approved_release=True)
     assert receipt.account_id == ACCOUNT
     assert receipt.replayed is False
-    assert len(client.calls) == 1
+    assert len(client.calls) == 2
     url, opts = client.calls[0]
     assert url == "https://loanhub.test/api/v1/batlokoa/registration/clients"
     assert opts["headers"]["Idempotency-Key"] == "synthetic-request-key-001"
     assert opts["headers"]["X-Company-ID"] == str(COMPANY)
     assert opts["headers"]["Authorization"] == "Bearer synthetic-server-only-token"
     assert "/company-clients" not in url
+    read_url, read_opts = client.calls[1]
+    assert read_url == ("https://loanhub.test/api/v1/company-clients/" + str(ACCOUNT))
+    assert read_opts["headers"]["X-Company-ID"] == str(COMPANY)
 
 
 @pytest.mark.parametrize("changes", [
@@ -135,3 +145,31 @@ def test_valid_https_origin_with_explicit_port_is_preserved():
     assert client.calls[0][0] == (
         "https://loanhub.test:8443/api/v1/batlokoa/registration/clients"
     )
+
+
+@pytest.mark.parametrize("returned", [
+    {"id": str(uuid4()), "company_id": str(COMPANY), "branch_id": str(BRANCH)},
+    {"id": str(ACCOUNT), "company_id": str(uuid4()), "branch_id": str(BRANCH)},
+    {"id": str(ACCOUNT), "company_id": str(COMPANY), "branch_id": str(uuid4())},
+    {"id": str(ACCOUNT), "company_id": str(COMPANY), "branch_id": None},
+])
+def test_upstream_readback_must_match_exact_account_company_and_branch(returned):
+    class WrongReadback(RecordingClient):
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return httpx.Response(200, json=returned)
+    client = WrongReadback()
+    with pytest.raises(ClientCreationUnavailable):
+        invoke(client, independently_approved_release=True)
+    assert len(client.calls) == 2
+
+
+def test_unavailable_account_readback_never_reports_registration_success():
+    class UnavailableReadback(RecordingClient):
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return httpx.Response(404, json={"detail": "Not found"})
+    client = UnavailableReadback()
+    with pytest.raises(ClientCreationUnavailable):
+        invoke(client, independently_approved_release=True)
+    assert len(client.calls) == 2
