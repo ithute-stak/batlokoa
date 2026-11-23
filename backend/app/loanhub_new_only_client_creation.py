@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from uuid import UUID
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, StrictBool
@@ -79,7 +80,27 @@ def post_new_only_client(
         raise ClientCreationUnavailable("Valid idempotency key required")
     if not isinstance(loanhub_access_token, str) or not loanhub_access_token:
         raise ClientCreationUnavailable("Authenticated upstream token required")
-    if not isinstance(loanhub_origin, str) or not loanhub_origin.startswith("https://"):
+    if not isinstance(loanhub_origin, str):
+        raise ClientCreationUnavailable("Trusted HTTPS LoanHub origin required")
+    try:
+        parsed_origin = urlsplit(loanhub_origin)
+        # Port is optional. Reading .port also rejects malformed port values.
+        port = parsed_origin.port
+        valid_origin = (
+            parsed_origin.scheme == "https"
+            and bool(parsed_origin.hostname)
+            and parsed_origin.username is None
+            and parsed_origin.password is None
+            and parsed_origin.path in ("", "/")
+            and not parsed_origin.query
+            and not parsed_origin.fragment
+            and parsed_origin.netloc
+            == (parsed_origin.hostname if port is None
+                else f"{parsed_origin.hostname}:{port}")
+        )
+    except ValueError:
+        valid_origin = False
+    if not valid_origin:
         raise ClientCreationUnavailable("Trusted HTTPS LoanHub origin required")
 
     try:
