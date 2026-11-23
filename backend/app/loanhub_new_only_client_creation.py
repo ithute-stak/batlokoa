@@ -158,6 +158,8 @@ def post_new_only_client(
                 ("id", str(receipt.client_account_id)),
                 ("company_id", str(staff.company_id)),
                 ("branch_id", str(branch_id)),
+                ("opened_by_user_id", str(staff.user_id)),
+                ("source", "new_only_registration"),
             )
         ):
             raise ClientCreationUnavailable("LoanHub account scope readback mismatch")
