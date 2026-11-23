@@ -202,6 +202,14 @@ class _StaffClientRegistrationScreenState
         const SnackBar(content: Text('National ID or passport is required.')));
       return;
     }
+    if (_step == 2 && _choice['employment_status'] == 'employed' &&
+        ((_choice['employment_type'] ?? '').isEmpty ||
+         (_choice['employer_group_id'] ?? '').isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select an employer sector and an existing LoanHub employer.'),
+      ));
+      return;
+    }
     if (_step == 2 && _hasExistingLoans) {
       final total = double.tryParse(_x('existing_loan_total').text) ?? 0;
       if (total <= 0) {
