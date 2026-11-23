@@ -106,3 +106,32 @@ def test_unconfirmed_upstream_result_is_not_reported_successful():
                                         "replayed": "false"})
     with pytest.raises(ClientCreationUnavailable):
         invoke(client, independently_approved_release=True)
+
+
+@pytest.mark.parametrize("origin", [
+    "http://loanhub.test",
+    "https://loanhub.test.evil.example/path",
+    "https://loanhub.test/api",
+    "https://loanhub.test?redirect=https://elsewhere.example",
+    "https://loanhub.test/#fragment",
+    "https://operator:password@loanhub.test",
+    "https://loanhub.test:bad-port",
+    "https://loanhub.test@evil.example",
+    "https://loanhub.test\\nevil.example",
+])
+def test_untrusted_upstream_origin_never_receives_token_or_identity(origin):
+    client = RecordingClient()
+    with pytest.raises(ClientCreationUnavailable):
+        invoke(client, independently_approved_release=True,
+               loanhub_origin=origin)
+    assert client.calls == []
+
+
+def test_valid_https_origin_with_explicit_port_is_preserved():
+    client = RecordingClient()
+    receipt = invoke(client, independently_approved_release=True,
+                     loanhub_origin="https://loanhub.test:8443")
+    assert receipt.account_id == ACCOUNT
+    assert client.calls[0][0] == (
+        "https://loanhub.test:8443/api/v1/batlokoa/registration/clients"
+    )
