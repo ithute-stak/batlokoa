@@ -78,8 +78,13 @@ Map<String, dynamic> buildNewClientRegistrationPayload({
     'town_or_village': optional(extra['town_or_village']),
     'physical_address': optional(extra['physical_address']),
     'employment_status': employmentStatus.trim(),
-    'employment_type': optional(extra['employment_type']),
+    'employment_type': optional(choices['employment_type']) ??
+        optional(extra['employment_type']),
+    'cdas_employee_number': choices['employment_type'] == 'government'
+        ? optional(extra['cdas_employee_number']) : null,
     'employer_name': optional(extra['employer_name']),
+    'employer_group_id': employmentStatus.trim() == 'employed'
+        ? optional(choices['employer_group_id']) : null,
     'job_title': optional(extra['job_title']),
     'income_day': incomeDay,
     'monthly_income': optional(monthlyIncome),
