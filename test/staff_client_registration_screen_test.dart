@@ -231,9 +231,11 @@ void main() {
     // Review must build the complete LoanHub new-only payload locally.
     // It must not submit anything or display the protected identity value.
     await tester.scrollUntilVisible(
-      find.byKey(const Key('register-review')), 160,
+      find.byKey(const Key('register-review')), 220,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(find.byKey(const Key('register-review')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-review')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-review-summary')), findsOneWidget);
