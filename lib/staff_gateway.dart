@@ -183,6 +183,30 @@ abstract class StaffNationalIdGateway {
   });
 }
 
+/// Server-confirmed LoanHub registration receipt.
+class StaffNewClientReceipt {
+  final String clientAccountId;
+  final bool replayed;
+  const StaffNewClientReceipt({required this.clientAccountId, required this.replayed});
+
+  factory StaffNewClientReceipt.fromJson(Map<String, dynamic> data) {
+    final id = data['client_account_id'];
+    final replayed = data['replayed'];
+    if (data['registered'] != true || id is! String ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(id) ||
+        replayed is! bool) {
+      throw const FormatException('Untrusted client registration confirmation');
+    }
+    return StaffNewClientReceipt(clientAccountId: id, replayed: replayed);
+  }
+}
+
+abstract class StaffNewClientCreationGateway {
+  Future<StaffNewClientReceipt> createNewClient(
+    Map<String, dynamic> completePayload, {required String idempotencyKey}
+  );
+}
+
 /// Owner-only staff management, separate from client registration.
 abstract class OwnerStaffManagementGateway {
   Future<List<Map<String, dynamic>>> ownerBranches();
@@ -217,7 +241,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffNewClientCreationGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -318,6 +342,45 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       clients.add(row);
     }
     return List<StaffClient>.unmodifiable(clients);
+  }
+
+  @override
+  Future<StaffNewClientReceipt> createNewClient(
+    Map<String, dynamic> completePayload, {required String idempotencyKey}
+  ) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Client registration requires CSRF proof');
+    }
+    if (!RegExp(r'^[a-zA-Z0-9_.-]{16,128}$').hasMatch(idempotencyKey)) {
+      throw ArgumentError('Invalid registration idempotency key');
+    }
+    final response = await client.post(
+      _url('/api/v1/staff/clients/register'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        'Idempotency-Key': idempotencyKey,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      },
+      body: jsonEncode(completePayload),
+    );
+    if (response.statusCode == 503) {
+      throw StateError('New-client registration is not released');
+    }
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      throw StateError('Employee session or branch access denied');
+    }
+    if (response.statusCode != 201 || response.bodyBytes.length > 4096) {
+      throw StateError('LoanHub did not confirm client registration');
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw const FormatException('Invalid registration confirmation');
+    }
+    return StaffNewClientReceipt.fromJson(body);
   }
 
   @override

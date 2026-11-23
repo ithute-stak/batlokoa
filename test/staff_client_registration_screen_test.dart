@@ -93,6 +93,31 @@ Future<void> unlock(WidgetTester tester, MockIdentityGateway gateway) async {
 }
 
 void main() {
+  testWidgets('mobile keyboard gives National ID input the scrollable viewport',
+      (tester) async {
+    final gateway = MockIdentityGateway();
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: Size(390, 720),
+          viewInsets: EdgeInsets.only(bottom: 390),
+        ),
+        child: StaffClientRegistrationScreen(staff: assigned, gateway: gateway),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register-national-id')), findsOneWidget);
+    // The keyboard must not leave large fixed header/footer controls
+    // competing with the editor for the reduced-height viewport.
+    expect(find.text('Step 1 of 6'), findsNothing);
+    expect(find.byKey(const Key('register-continue')), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('register-national-id')));
+    await tester.enterText(
+        find.byKey(const Key('register-national-id')), 'SYNTHETIC-ID');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('register-national-id')), findsOneWidget);
+  });
+
   testWidgets('National ID is the first input, no name fields shown', (tester) async {
     final gateway = MockIdentityGateway();
     await showForm(tester, gateway);
@@ -169,9 +194,9 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.textContaining('new-client registration is not released'), findsOneWidget);
-    expect(find.text('Submit registration — unavailable'), findsOneWidget);
+    expect(find.text('Save client to LoanHub — awaiting release'), findsOneWidget);
     final submit = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'Submit registration — unavailable'));
+      find.widgetWithText(OutlinedButton, 'Save client to LoanHub — awaiting release'));
     expect(submit.onPressed, isNull);
     expect(find.textContaining('SYNTHETIC-NATIONAL-ID'), findsNothing);
   });

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
+import 'staff_client_registration_payload.dart';
+import 'new_client_attempt_guard.dart';
 import 'batlokoa_design.dart';
 import 'bfs_responsive.dart';
 import 'bfs_widgets.dart';
@@ -451,6 +453,81 @@ class _StaffClientRegistrationScreenState
     }
   }
 
+  /// Maps all supported fields, including debts and bank details, without
+  /// saving a browser draft or mistaking identity preflight for authorization.
+  Map<String, dynamic> _completeRegistrationPayload() =>
+      buildNewClientRegistrationPayload(
+        branchId: _branch!,
+        firstName: _firstName.text,
+        lastName: _lastName.text,
+        phone: _phone.text,
+        dateOfBirth: _birthDate.text,
+        gender: _gender.text,
+        district: _district.text,
+        employmentStatus: _employment.text,
+        nationalId: _nationalId.text,
+        passportNumber: _passport.text,
+        extra: {for (final entry in _extra.entries) entry.key: entry.value.text},
+        choices: _choice,
+        monthlyIncome: _income.text,
+        hasExistingLoans: _hasExistingLoans,
+        salaryAccount: _salaryAccount,
+        externalDebts: [
+          for (final debt in _externalDebt)
+            {for (final entry in debt.entries) entry.key: entry.value.text},
+        ],
+        profileConsent: _shareConsent,
+        creditConsent: _creditConsent,
+      );
+
+  // The current LoanHub release is not approved. Keep this false until an
+  // independently reviewed release supplies real server-side authorization.
+  bool get _clientWritesReleased => false;
+  // Reuse a request key on retries; never make ambiguous network failures
+  // create a second borrower account.
+  final String _registrationRequestKey = 'batlokoa-' +
+      DateTime.now().microsecondsSinceEpoch.toString() + '-register';
+  bool _savingClient = false;
+  late final NewClientAttemptGuard _attempt = NewClientAttemptGuard(
+      _registrationRequestKey);
+  String? _clientSaveResult;
+
+  Future<void> _saveNewClient() async {
+    if (!_clientWritesReleased || !_review || !_identityChecked ||
+        _checkedNationalId != _nationalId.text.trim() ||
+        _checkedBranch != _branch || _branch == null || _savingClient ||
+        _attempt.confirmed ||
+        widget.gateway is! StaffNewClientCreationGateway) return;
+    if (_form.currentState?.validate() != true) return;
+    setState(() { _savingClient = true; _clientSaveResult = null; });
+    try {
+      final payload = _completeRegistrationPayload();
+      try {
+        _attempt.prepare(payload);
+      } on StateError {
+        if (mounted) setState(() => _clientSaveResult =
+            'Registration details changed or already confirmed. '
+            'Check LoanHub before starting a new registration.');
+        return;
+      }
+      final receipt = await (widget.gateway as StaffNewClientCreationGateway)
+          .createNewClient(payload,
+            idempotencyKey: _registrationRequestKey);
+      if (!mounted) return;
+      setState(() {
+        _attempt.confirm();
+        _clientSaveResult = receipt.replayed
+            ? 'Previous registration confirmed in LoanHub.'
+            : 'Client registered in LoanHub. Account: ' + receipt.clientAccountId;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _clientSaveResult =
+          'LoanHub did not confirm registration. No success is claimed.');
+    } finally {
+      if (mounted) setState(() => _savingClient = false);
+    }
+  }
+
   @override
   void dispose() {
     for (final controller in [
@@ -794,22 +871,34 @@ class _StaffClientRegistrationScreenState
           )),
           const SizedBox(height: 16),
           OutlinedButton.icon(
-            onPressed: null,
-            icon: Icon(Icons.lock_outline),
-            label: Text('Submit registration — unavailable'),
+            key: const Key('register-save-client'),
+            onPressed: _clientWritesReleased && _review && !_savingClient
+                ? _saveNewClient : null,
+            icon: const Icon(Icons.lock_outline),
+            label: Text(_savingClient ? 'Saving client...' :
+                'Save client to LoanHub — awaiting release'),
           ),
+          if (_clientSaveResult != null)
+            Text(_clientSaveResult!, key: const Key('register-save-result')),
         ]);
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    // The mobile virtual keyboard can consume most of the viewport. Keep the
+    // active form stage scrollable and release space taken by the header and
+    // previous/continue controls while an input has focus.
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    return Scaffold(
+    resizeToAvoidBottomInset: true,
     appBar: AppBar(title: const Text('Register client'),
       backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760),
       child: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+        if (!keyboardVisible)
+          Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
               Expanded(child: Text('Step ' + (_step + 2).toString() +
@@ -834,7 +923,8 @@ class _StaffClientRegistrationScreenState
             padding: BfsResponsive.pagePadding(context),
             children: [_stage()],
           ))),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        if (!keyboardVisible)
+          Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           child: Row(children: [
             Expanded(child: OutlinedButton.icon(
               onPressed: _step == -1 || _serverBusy || _checkingIdentity ? null
@@ -858,4 +948,5 @@ class _StaffClientRegistrationScreenState
       ]),
     ))),
   );
+  }
 }
