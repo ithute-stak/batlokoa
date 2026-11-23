@@ -8,6 +8,9 @@ on:
     paths:
       - '.github/workflows/publish-disabled-demo.yml'
       - 'lib/staff_client_registration_screen.dart'
+      - 'backend/app/staff_registration_employer_routes.py'
+      - 'backend/app/staff_registration_branches_routes.py'
+      - 'backend/app/staff_registration_read_origin.py'
 
 permissions:
   contents: read
