@@ -206,3 +206,67 @@ def test_post_confirms_account_but_readback_fails_requires_safe_retry():
     assert client.calls[0][1]["headers"]["Idempotency-Key"] == (
         "synthetic-request-key-001")
     assert len(client.calls) == 2
+
+
+def test_authorized_gateway_post_then_new_request_gets_persisted_account():
+    """Simulate a separate LoanHub HTTP read after the POST transaction.
+
+    Real PostgreSQL persistence is independently certified in LoanHub CI;
+    this ensures Batlokoa checks the exact created UUID, company and branch
+    before it considers the submission successful.
+    """
+    stored = {}
+
+    def loanhub(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer synthetic-server-only-token"
+        assert request.headers["x-company-id"] == str(COMPANY)
+        if request.method == "POST":
+            assert request.url.path == "/api/v1/batlokoa/registration/clients"
+            assert request.headers["idempotency-key"] == "synthetic-request-key-001"
+            captured = __import__("json").loads(request.content)
+            assert captured["branch_id"] == str(BRANCH)
+            replay = bool(stored)
+            if not replay:
+                stored["id"] = str(ACCOUNT)
+                stored["company_id"] = str(COMPANY)
+                stored["branch_id"] = str(BRANCH)
+                stored["opened_by_user_id"] = str(ACTOR)
+                stored["source"] = "new_only_registration"
+                stored["first_name"] = captured["first_name"]
+            return httpx.Response(
+                201, json={"client_account_id": str(ACCOUNT),
+                           "replayed": replay},
+            )
+        if request.method == "GET":
+            assert request.url.path == (
+                "/api/v1/company-clients/" + str(ACCOUNT))
+            return httpx.Response(200, json=dict(stored)) if stored else (
+                httpx.Response(404, json={"detail": "Not found"}))
+        return httpx.Response(405)
+
+    with httpx.Client(transport=httpx.MockTransport(loanhub)) as client:
+        first = invoke(client, independently_approved_release=True)
+        assert first.account_id == ACCOUNT
+        assert first.replayed is False
+        second = invoke(client, independently_approved_release=True)
+        assert second.account_id == ACCOUNT
+        assert second.replayed is True
+    assert stored["first_name"] == "Synthetic"
+    assert len(stored) == 6
+
+
+def test_gateway_does_not_claim_save_when_readback_is_wrong():
+    def wrong_tenant_response(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(201, json={
+                "client_account_id": str(ACCOUNT), "replayed": False})
+        return httpx.Response(200, json={
+            "id": str(ACCOUNT), "company_id": str(uuid4()),
+            "branch_id": str(BRANCH),
+            "opened_by_user_id": str(ACTOR),
+            "source": "new_only_registration",
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(wrong_tenant_response)) as client:
+        with pytest.raises(ClientCreationUnavailable, match="scope readback"):
+            invoke(client, independently_approved_release=True)
