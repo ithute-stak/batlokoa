@@ -25,6 +25,13 @@ Map<String, dynamic> buildNewClientRegistrationPayload({
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  final incomeDayText = optional(extra['income_day']);
+  final incomeDay = incomeDayText == null ? null : int.tryParse(incomeDayText);
+  if (incomeDayText != null && (incomeDay == null || incomeDay < 1 ||
+      incomeDay > 31)) {
+    throw const FormatException('Income day must be between 1 and 31');
+  }
+
   final bank = optional(choices['bank_name']);
   final accountNumber = optional(extra['bank_account_number']);
   final accountHolder = optional(extra['bank_account_holder']);
@@ -74,7 +81,7 @@ Map<String, dynamic> buildNewClientRegistrationPayload({
     'employment_type': optional(extra['employment_type']),
     'employer_name': optional(extra['employer_name']),
     'job_title': optional(extra['job_title']),
-    'income_day': int.tryParse(extra['income_day'] ?? ''),
+    'income_day': incomeDay,
     'monthly_income': optional(monthlyIncome),
     'salary_date': optional(extra['salary_date']),
     'has_existing_loans': hasExistingLoans,
