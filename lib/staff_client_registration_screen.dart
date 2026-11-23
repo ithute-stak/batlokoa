@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'staff_gateway.dart';
 import 'staff_client_registration_payload.dart';
+import 'new_client_attempt_guard.dart';
 import 'batlokoa_design.dart';
 import 'bfs_responsive.dart';
 import 'bfs_widgets.dart';
@@ -488,36 +488,34 @@ class _StaffClientRegistrationScreenState
   final String _registrationRequestKey = 'batlokoa-' +
       DateTime.now().microsecondsSinceEpoch.toString() + '-register';
   bool _savingClient = false;
-  bool _registrationConfirmed = false;
-  String? _attemptedPayloadJson;
+  late final NewClientAttemptGuard _attempt = NewClientAttemptGuard(
+      _registrationRequestKey);
   String? _clientSaveResult;
 
   Future<void> _saveNewClient() async {
     if (!_clientWritesReleased || !_review || !_identityChecked ||
         _checkedNationalId != _nationalId.text.trim() ||
         _checkedBranch != _branch || _branch == null || _savingClient ||
-        _registrationConfirmed ||
+        _attempt.confirmed ||
         widget.gateway is! StaffNewClientCreationGateway) return;
     if (_form.currentState?.validate() != true) return;
     setState(() { _savingClient = true; _clientSaveResult = null; });
     try {
       final payload = _completeRegistrationPayload();
-      final snapshot = jsonEncode(payload);
-      if (_attemptedPayloadJson != null &&
-          _attemptedPayloadJson != snapshot) {
+      try {
+        _attempt.prepare(payload);
+      } on StateError {
         if (mounted) setState(() => _clientSaveResult =
-            'Registration details changed after an uncertain save. '
-            'Do not submit this request again; check the existing '
-            'registration before starting a new one.');
+            'Registration details changed or already confirmed. '
+            'Check LoanHub before starting a new registration.');
         return;
       }
-      _attemptedPayloadJson ??= snapshot;
       final receipt = await (widget.gateway as StaffNewClientCreationGateway)
           .createNewClient(payload,
             idempotencyKey: _registrationRequestKey);
       if (!mounted) return;
       setState(() {
-        _registrationConfirmed = true;
+        _attempt.confirm();
         _clientSaveResult = receipt.replayed
             ? 'Previous registration confirmed in LoanHub.'
             : 'Client registered in LoanHub. Account: ' + receipt.clientAccountId;
