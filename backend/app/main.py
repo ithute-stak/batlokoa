@@ -19,6 +19,7 @@ from .staff_registration_preflight_routes import router as staff_registration_pr
 from .staff_registration_readiness_routes import router as staff_registration_readiness_router
 from .staff_national_id_check_routes import router as staff_national_id_check_router
 from .staff_registration_employer_routes import router as staff_registration_employer_router
+from .staff_registration_branches_routes import router as staff_registration_branches_router
 from .staff_registration_release_routes import router as staff_registration_release_router
 from fastapi.responses import JSONResponse
 
@@ -96,6 +97,7 @@ app.include_router(staff_national_id_check_router)
 
 # Authenticated read-only LoanHub employer groups for registration options.
 app.include_router(staff_registration_employer_router)
+app.include_router(staff_registration_branches_router)
 
 # Informational release status is opt-in and never authorizes client creation.
 app.include_router(staff_registration_release_router)
