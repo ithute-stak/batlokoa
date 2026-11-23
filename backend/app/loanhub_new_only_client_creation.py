@@ -128,6 +128,39 @@ def post_new_only_client(
         ):
             raise ClientCreationUnavailable("LoanHub registration not confirmed")
         receipt = NewClientReceipt.model_validate(response.json())
+        # A successful POST is insufficient evidence that the correct tenant
+        # can retrieve its account. Reuse the original authenticated staff
+        # token and the exact account UUID; never search by borrower PII.
+        readback = client.get(
+            loanhub_origin.rstrip("/") + "/api/v1/company-clients/"
+            + str(receipt.client_account_id),
+            headers={
+                "Authorization": "Bearer " + loanhub_access_token,
+                "X-Company-ID": str(staff.company_id),
+                "X-Active-Role": staff.role.lower(),
+                "Accept": "application/json",
+                "Cache-Control": "no-store",
+            },
+            timeout=10.0,
+            follow_redirects=False,
+        )
+        if (
+            readback.status_code != 200
+            or len(readback.content) > 65536
+            or "application/json" not in
+                readback.headers.get("content-type", "").lower()
+        ):
+            raise ClientCreationUnavailable("LoanHub account readback not confirmed")
+        verified = readback.json()
+        if not isinstance(verified, dict) or any(
+            type(verified.get(key)) is not str or verified[key] != expected
+            for key, expected in (
+                ("id", str(receipt.client_account_id)),
+                ("company_id", str(staff.company_id)),
+                ("branch_id", str(branch_id)),
+            )
+        ):
+            raise ClientCreationUnavailable("LoanHub account scope readback mismatch")
         return CreatedClient(receipt.client_account_id, receipt.replayed)
     except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
         raise ClientCreationUnavailable("LoanHub registration not confirmed") from exc
