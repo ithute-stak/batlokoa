@@ -173,3 +173,28 @@ def test_unavailable_account_readback_never_reports_registration_success():
     with pytest.raises(ClientCreationUnavailable):
         invoke(client, independently_approved_release=True)
     assert len(client.calls) == 2
+
+
+def test_replayed_registration_still_requires_same_account_readback():
+    client = RecordingClient(json_body={
+        "client_account_id": str(ACCOUNT), "replayed": True,
+    })
+    receipt = invoke(client, independently_approved_release=True)
+    assert receipt.replayed is True
+    assert receipt.account_id == ACCOUNT
+    assert len(client.calls) == 2
+
+
+def test_post_confirms_account_but_readback_fails_requires_safe_retry():
+    class FailedReadback(RecordingClient):
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return httpx.Response(503, json={"code": "UNAVAILABLE"})
+    client = FailedReadback()
+    with pytest.raises(ClientCreationUnavailable):
+        invoke(client, independently_approved_release=True)
+    # The POST might have committed. Caller must retry with its ORIGINAL
+    # idempotency key rather than treating the absence of GET as a rollback.
+    assert client.calls[0][1]["headers"]["Idempotency-Key"] == (
+        "synthetic-request-key-001")
+    assert len(client.calls) == 2
