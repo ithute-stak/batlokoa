@@ -40,6 +40,87 @@ class _StaffClientRegistrationScreenState
     'gender': 'male', 'employment_status': 'employed',
     'bank_name': '', 'bank_account_type': 'savings',
   };
+  List<Map<String, String>> _employerOptions = const [];
+  bool _employersLoading = false;
+  String? _employersError;
+
+  Future<void> _loadEmployers() async {
+    if (widget.gateway is! StaffRegistrationEmployerGateway) {
+      setState(() => _employersError =
+          'LoanHub employer directory is unavailable.');
+      return;
+    }
+    setState(() { _employersLoading = true; _employersError = null; });
+    try {
+      final options = await
+          (widget.gateway as StaffRegistrationEmployerGateway)
+              .registrationEmployers();
+      if (!mounted) return;
+      setState(() {
+        _employerOptions = options;
+        _employersError = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() =>
+          _employersError = 'Could not load LoanHub employers. Retry.');
+    } finally {
+      if (mounted) setState(() => _employersLoading = false);
+    }
+  }
+
+  Widget _loanHubEmployerPicker() {
+    if (_employersLoading) return const LinearProgressIndicator();
+    if (_employersError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(children: [
+          Text(_employersError!),
+          TextButton.icon(
+            key: const Key('register-reload-employers'),
+            onPressed: _loadEmployers,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reload LoanHub employers'),
+          ),
+        ]),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: DropdownButtonFormField<String>(
+        key: const Key('register-employer-group'),
+        isExpanded: true,
+        value: _employerOptions.any(
+            (option) => option['id'] == _choice['employer_group_id'])
+            ? _choice['employer_group_id'] : null,
+        decoration: const InputDecoration(
+          labelText: 'Employer / work group *',
+          border: OutlineInputBorder(),
+        ),
+        items: [
+          for (final employer in _employerOptions)
+            DropdownMenuItem<String>(
+              value: employer['id'],
+              child: Text(
+                '${employer['code']} — ${employer['name']}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        validator: (v) => _choice['employment_status'] == 'employed' &&
+                (v == null || v.isEmpty)
+            ? 'Select an existing LoanHub employer' : null,
+        onChanged: (value) => setState(() {
+          _choice['employer_group_id'] = value ?? '';
+          final selected = _employerOptions.where(
+              (option) => option['id'] == value);
+          _x('employer_name').text =
+              selected.isNotEmpty ? selected.first['name'] ?? '' : '';
+          _review = false;
+        }),
+      ),
+    );
+  }
+
   bool _hasExistingLoans = false;
   bool _salaryAccount = false;
   final _externalDebt = <Map<String, TextEditingController>>[];
@@ -326,6 +407,7 @@ class _StaffClientRegistrationScreenState
     _employment.text = 'employed';
     _x('nationality').text = 'Mosotho';
     _loadBranches();
+    _loadEmployers();
   }
 
   Future<void> _loadBranches() async {
@@ -635,18 +717,25 @@ class _StaffClientRegistrationScreenState
             'unemployed': 'Unemployed', 'student': 'Student',
             'pensioner': 'Pensioner',
           }),
-          _extraField('employment_type', 'Employment type'),
-          _extraField('employer_name', 'Employer'),
+          if (_choice['employment_status'] == 'employed') ...[
+            _select('employment_type', 'Employer sector *', {
+              'government': 'Government',
+              'private': 'Private company',
+              'ngo': 'NGO / non-profit',
+              'other': 'Other organisation',
+            }),
+            _loanHubEmployerPicker(),
+            if (_choice['employment_type'] == 'government')
+              _extraField('cdas_employee_number',
+                  'Government employee / CDAS number (optional)'),
+          ] else if (_choice['employment_status'] == 'self_employed')
+            _extraField('employment_type', 'Work type / business activity'),
           _extraField('job_title', 'Job title'),
           _extraField('income_day', 'Salary day (1–31)',
               type: TextInputType.number),
           _field('Monthly income', _income, validate: _validateIncome,
               type: const TextInputType.numberWithOptions(decimal: true)),
           _extraField('salary_date', 'Salary date'),
-          const SizedBox(height: 10),
-          const BfsPanel(child: Text(
-            'LoanHub reserves employer-group links, new employer groups '
-            'and government CDAS employee number for a future reviewed phase.')),
           const SizedBox(height: 15),
           CheckboxListTile(
             key: const Key('register-existing-loans'),
