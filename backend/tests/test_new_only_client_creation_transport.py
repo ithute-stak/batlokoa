@@ -37,6 +37,8 @@ class RecordingClient:
         return httpx.Response(200, json={
             "id": str(ACCOUNT), "company_id": str(COMPANY),
             "branch_id": str(BRANCH),
+            "opened_by_user_id": str(ACTOR),
+            "source": "new_only_registration",
         })
 
 
@@ -152,6 +154,12 @@ def test_valid_https_origin_with_explicit_port_is_preserved():
     {"id": str(ACCOUNT), "company_id": str(uuid4()), "branch_id": str(BRANCH)},
     {"id": str(ACCOUNT), "company_id": str(COMPANY), "branch_id": str(uuid4())},
     {"id": str(ACCOUNT), "company_id": str(COMPANY), "branch_id": None},
+    {"id": str(ACCOUNT), "company_id": str(COMPANY),
+     "branch_id": str(BRANCH), "opened_by_user_id": str(uuid4()),
+     "source": "new_only_registration"},
+    {"id": str(ACCOUNT), "company_id": str(COMPANY),
+     "branch_id": str(BRANCH), "opened_by_user_id": str(ACTOR),
+     "source": "assisted_registration"},
 ])
 def test_upstream_readback_must_match_exact_account_company_and_branch(returned):
     class WrongReadback(RecordingClient):
