@@ -803,13 +803,17 @@ class _StaffClientRegistrationScreenState
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    return Scaffold(
+    resizeToAvoidBottomInset: true,
     appBar: AppBar(title: const Text('Register client'),
       backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760),
       child: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+        if (!keyboardVisible)
+          Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
               Expanded(child: Text('Step ' + (_step + 2).toString() +
@@ -834,7 +838,8 @@ class _StaffClientRegistrationScreenState
             padding: BfsResponsive.pagePadding(context),
             children: [_stage()],
           ))),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        if (!keyboardVisible)
+          Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           child: Row(children: [
             Expanded(child: OutlinedButton.icon(
               onPressed: _step == -1 || _serverBusy || _checkingIdentity ? null
@@ -858,4 +863,5 @@ class _StaffClientRegistrationScreenState
       ]),
     ))),
   );
+  }
 }
