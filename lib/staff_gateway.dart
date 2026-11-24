@@ -192,8 +192,7 @@ abstract class StaffRegistrationEmployerGateway {
   Future<List<Map<String, String>>> registrationEmployers();
 }
 
-/// A confirmed, tenant-scoped account receipt. The actual server verifies
-/// persisted account readback before returning this response.
+/// Server-confirmed registration receipt, with no client PII.
 class StaffCreatedClientReceipt {
   final String clientAccountId;
   final bool replayed;
@@ -201,21 +200,20 @@ class StaffCreatedClientReceipt {
     required this.clientAccountId, required this.replayed,
   });
 
-  factory StaffCreatedClientReceipt.fromJson(Map<String, dynamic> json) {
-    final id = json['client_account_id'];
-    if (json['registered'] != true || id is! String ||
-        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\$').hasMatch(id) ||
-        json['replayed'] is! bool) {
+  factory StaffCreatedClientReceipt.fromJson(Map<String, dynamic> data) {
+    final id = data['client_account_id'];
+    if (data['registered'] != true || id is! String ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(id) ||
+        data['replayed'] is! bool) {
       throw const FormatException('Untrusted client registration confirmation');
     }
     return StaffCreatedClientReceipt(
-      clientAccountId: id, replayed: json['replayed'] as bool,
+      clientAccountId: id, replayed: data['replayed'] as bool,
     );
   }
 }
 
-/// Staged interface only. DO NOT attach to Save Client until production
-/// database indexing, formal approvals, and BFF/LoanHub releases are complete.
+/// Staged transport only. The production Save Client button remains disabled.
 abstract class StaffNewClientCreationGateway {
   Future<StaffCreatedClientReceipt> createNewClient({
     required Map<String, dynamic> completePayload,
@@ -513,385 +511,40 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
     if (csrf == null || csrf.isEmpty) {
       throw StateError('Client registration requires secure staff CSRF proof');
     }
-    if (!RegExp(r'^[A-Za-z0-9_.-]{16,128}
-      String path, String key) async {
-    final response = await client.get(_url(path),
-      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'});
-    if (response.statusCode != 200 || response.bodyBytes.length > 262144) {
-      throw StateError('Owner staff directory unavailable or access denied');
+    if (!RegExp(r'^[A-Za-z0-9_.-]{16,128}$').hasMatch(idempotencyKey)) {
+      throw ArgumentError('Valid registration idempotency key required');
     }
-    final body = jsonDecode(response.body);
-    if (body is! Map<String, dynamic> || body[key] is! List) {
-      throw const FormatException('Invalid owner staff response');
+    if (completePayload['branch_id'] is! String ||
+        (completePayload['branch_id'] as String).isEmpty ||
+        completePayload.containsKey('company_id') ||
+        completePayload.containsKey('user_id') ||
+        completePayload.containsKey('role') ||
+        completePayload.containsKey('independently_approved_release')) {
+      throw ArgumentError('Invalid client registration scope');
     }
-    final rows = body[key] as List;
-    if (rows.length > 100 || rows.any((row) => row is! Map<String, dynamic>)) {
-      throw const FormatException('Invalid owner staff list');
-    }
-    return List<Map<String, dynamic>>.unmodifiable(
-      rows.cast<Map<String, dynamic>>());
-  }
-
-  @override
-  Future<List<Map<String, dynamic>>> ownerBranches() =>
-      _readOwnerList('/api/v1/staff/manage/branches', 'branches');
-
-  @override
-  Future<List<Map<String, dynamic>>> ownerStaff() =>
-      _readOwnerList('/api/v1/staff/manage/members', 'members');
-
-  @override
-  Future<String> createStaffAccount(Map<String, dynamic> draft) async {
-    final csrf = csrfToken?.call();
-    if (csrf == null || csrf.isEmpty) {
-      throw StateError('Secure owner action requires CSRF proof');
-    }
-    final response = await client.post(_url('/api/v1/staff/manage/members'),
+    final response = await client.post(
+      _url('/api/v1/staff/clients/register'),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Cache-Control': 'no-store',
         'x-csrf-token': csrf,
+        'idempotency-key': idempotencyKey,
         if (!browserManagedOrigin) 'Origin': origin.toString(),
       },
-      body: jsonEncode(draft),
+      body: jsonEncode(completePayload),
     );
     if (response.statusCode == 503) {
-      throw StateError('Staff account creation is not yet released.');
+      throw StateError('Permanent client registration is not yet released');
     }
-    if (response.statusCode == 409) {
-      throw StateError('Account already exists or the company staff limit is reached.');
-    }
-    if (response.statusCode != 201) {
-      throw StateError('Staff registration was denied or needs owner verification.');
-    }
-    final data = jsonDecode(response.body);
-    if (data is! Map<String, dynamic> ||
-        data['created'] != true || data['staff_id'] is! String) {
-      throw const FormatException('Staff registration not confirmed');
-    }
-    return data['staff_id'] as String;
-  }
-
-  @override
-  Future<void> logout() async {
-    final csrf = csrfToken?.call();
-    if (csrf == null || csrf.isEmpty) {
-      throw StateError('Secure employee sign-out requires CSRF proof');
-    }
-    final res = await client.post(_url('/api/v1/staff/logout'),
-        headers: {
-          'Accept': 'application/json',
-          'x-csrf-token': csrf,
-          if (!browserManagedOrigin) 'Origin': origin.toString(),
-        });
-    if (res.statusCode != 200) {
-      throw StateError('Employee sign-out failed');
-    }
-    final body = jsonDecode(res.body);
-    if (body is! Map<String, dynamic> || body['logged_out'] != true) {
-      throw StateError('Employee sign-out was not confirmed');
-    }
-  }
-}
-).hasMatch(id) ||
-        json['replayed'] is! bool) {
-      throw const FormatException('Untrusted client registration confirmation');
-    }
-    return StaffCreatedClientReceipt(
-      clientAccountId: id, replayed: json['replayed'] as bool,
-    );
-  }
-}
-
-/// Staged interface only. DO NOT attach to Save Client until production
-/// database indexing, formal approvals, and BFF/LoanHub releases are complete.
-abstract class StaffNewClientCreationGateway {
-  Future<StaffCreatedClientReceipt> createNewClient({
-    required Map<String, dynamic> completePayload,
-    required String idempotencyKey,
-  });
-}
-
-/// Owner-only staff management, separate from client registration.
-abstract class OwnerStaffManagementGateway {
-  Future<List<Map<String, dynamic>>> ownerBranches();
-  Future<List<Map<String, dynamic>>> ownerStaff();
-  Future<String> createStaffAccount(Map<String, dynamic> draft);
-}
-
-/// Explicitly disabled until a reviewed same-origin BFF client is installed.
-/// Unlike the legacy customer preview, this never simulates signing in.
-class DisabledStaffGateway implements StaffGateway {
-  const DisabledStaffGateway();
-
-  @override
-  Future<StaffSession?> session() async => null;
-
-  @override
-  Future<StaffSession> login(String phone, String password) async =>
-      throw StateError('Employee sign-in has not been configured');
-
-
-  @override
-  Future<StaffRegistrationPreflight> validateRegistration(Map<String, dynamic> draft) async =>
-      throw StateError('Registration preflight is not configured');
-
-  @override
-  Future<void> logout() async {}
-
-  @override
-  Future<List<StaffClient>> findClients({String search = '', String? branchId, int limit = 30}) async =>
-      throw StateError('Employee client directory is not configured');
-}
-
-/// Browser-compatible session gateway. Must be used on the approved HTTPS
-/// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway {
-  final http.Client client;
-  final Uri origin;
-  final String? Function()? csrfToken;
-  final bool browserManagedOrigin;
-  SameOriginStaffGateway({required this.client, required this.origin,
-      this.csrfToken, this.browserManagedOrigin = false}) {
-    if (origin.scheme != 'https' || origin.host.isEmpty ||
-        origin.path.isNotEmpty || origin.hasQuery ||
-        origin.hasFragment || origin.userInfo.isNotEmpty) {
-      throw ArgumentError('Approved HTTPS origin is required');
-    }
-  }
-
-  Uri _url(String path) => origin.resolve(path);
-
-  @override
-  Future<StaffSession?> session() async {
-    final res = await client.get(_url('/api/v1/staff/session'),
-        headers: {'Accept': 'application/json'});
-    if (res.statusCode == 401 || res.statusCode == 503) return null;
-    if (res.statusCode != 200) throw StateError('Session unavailable');
-    return StaffSession.fromJson(
-        jsonDecode(res.body) as Map<String, dynamic>);
-  }
-
-  @override
-  Future<StaffSession> login(String phone, String password) =>
-      loginWithSecondFactor(phone, password);
-
-  @override
-  Future<StaffSession> loginWithSecondFactor(
-    String phone,
-    String password, {
-    String? otp,
-    String? recoveryCode,
-  }) async {
-    if (otp != null && recoveryCode != null) {
-      throw ArgumentError('Select either an authenticator code or recovery code');
-    }
-    final res = await client.post(_url('/api/v1/staff/login'),
-        headers: {'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                  if (!browserManagedOrigin) 'Origin': origin.toString()},
-        body: jsonEncode({
-          'phone': phone,
-          'password': password,
-          if (otp != null) 'otp': otp,
-          if (recoveryCode != null) 'recovery_code': recoveryCode,
-        }));
-    if (res.statusCode != 200) throw StateError('Employee sign-in was denied');
-    // Login response is not sufficient authorization: revalidate via session.
-    final verified = await session();
-    if (verified == null) throw StateError('Employee session unavailable');
-    return verified;
-  }
-
-  @override
-  Future<List<StaffClient>> findClients({
-    String search = '', String? branchId, int limit = 30,
-  }) async {
-    if (search.length > 120 || limit < 1 || limit > 100 ||
-        (branchId != null && branchId.trim().isEmpty)) {
-      throw ArgumentError('Invalid client directory filters');
-    }
-    final query = <String, String>{
-      'search': search.trim(),
-      'limit': '$limit',
-      if (branchId != null) 'branch_id': branchId,
-    };
-    final uri = _url('/api/v1/staff/clients')
-        .replace(queryParameters: query);
-    final res = await client.get(uri, headers: {
-      'Accept': 'application/json',
-      'Cache-Control': 'no-store',
-    });
-    if (res.statusCode == 401) {
-      throw StateError('Employee session expired. Sign in again.');
-    }
-    if (res.statusCode != 200 || res.bodyBytes.length > 262144) {
-      throw StateError('Client directory is unavailable');
-    }
-    final parsed = jsonDecode(res.body);
-    if (parsed is! Map<String, dynamic> ||
-        parsed['clients'] is! List ||
-        (parsed['clients'] as List).length > limit) {
-      throw const FormatException('Unexpected client directory response');
-    }
-    final clients = <StaffClient>[];
-    final seen = <String>{};
-    for (final item in parsed['clients'] as List) {
-      if (item is! Map<String, dynamic>) {
-        throw const FormatException('Unexpected client directory record');
-      }
-      final row = StaffClient.fromJson(item);
-      if (!seen.add(row.accountId)) {
-        throw const FormatException('Duplicate client directory record');
-      }
-      clients.add(row);
-    }
-    return List<StaffClient>.unmodifiable(clients);
-  }
-
-  @override
-  Future<List<Map<String, String>>> registrationBranches() async {
-    final response = await client.get(
-      _url('/api/v1/staff/clients/registration-branches'),
-      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
-    );
-    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
-      throw StateError('LoanHub branch directory unavailable');
-    }
-    final parsed = jsonDecode(response.body);
-    if (parsed is! Map<String, dynamic> ||
-        parsed['branches'] is! List || (parsed['branches'] as List).length > 100) {
-      throw const FormatException('Invalid registration branches');
-    }
-    final rows = <Map<String, String>>[];
-    final ids = <String>{};
-    for (final value in parsed['branches'] as List) {
-      if (value is! Map<String, dynamic> || value['id'] is! String ||
-          value['name'] is! String) {
-        throw const FormatException('Invalid authorized branch');
-      }
-      final id = value['id'] as String;
-      final name = value['name'] as String;
-      if (id.isEmpty || name.isEmpty || !ids.add(id)) {
-        throw const FormatException('Untrusted branch directory');
-      }
-      rows.add({'id': id, 'name': name});
-    }
-    return List<Map<String, String>>.unmodifiable(rows);
-  }
-
-  @override
-  Future<List<Map<String, String>>> registrationEmployers() async {
-    final response = await client.get(
-      _url('/api/v1/staff/clients/registration-employers'),
-      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
-    );
-    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
-      throw StateError('LoanHub employer directory unavailable');
-    }
-    final data = jsonDecode(response.body);
-    if (data is! Map<String, dynamic> || data['employers'] is! List ||
-        (data['employers'] as List).length > 500) {
-      throw const FormatException('Invalid employer directory');
-    }
-    final result = <Map<String, String>>[];
-    final seen = <String>{};
-    for (final row in data['employers'] as List) {
-      if (row is! Map<String, dynamic> || row['id'] is! String ||
-          row['code'] is! String || row['name'] is! String) {
-        throw const FormatException('Invalid employer option');
-      }
-      final id = row['id'] as String;
-      final code = row['code'] as String;
-      final name = row['name'] as String;
-      if (id.isEmpty || code.isEmpty || name.isEmpty || !seen.add(id)) {
-        throw const FormatException('Duplicate or empty employer option');
-      }
-      result.add({'id': id, 'code': code, 'name': name});
-    }
-    return List<Map<String, String>>.unmodifiable(result);
-  }
-
-  @override
-  Future<StaffRegistrationReadiness> registrationReadiness() async {
-    final response = await client.get(
-      _url('/api/v1/staff/clients/registration-readiness'),
-      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'},
-    );
-    if (response.statusCode != 200 || response.bodyBytes.length > 4096) {
-      throw StateError('LoanHub registration release status unavailable');
-    }
-    final body = jsonDecode(response.body);
-    if (body is! Map<String, dynamic>) {
-      throw const FormatException('Invalid release status response');
-    }
-    return StaffRegistrationReadiness.fromJson(body);
-  }
-
-  @override
-  Future<StaffNationalIdCheck> checkNationalId({
-    required String nationalId, required String branchId,
-  }) async {
-    final csrf = csrfToken?.call();
-    if (csrf == null || csrf.isEmpty) {
-      throw StateError('Identity check requires a secure staff session');
-    }
-    final trimmedId = nationalId.trim();
-    if (trimmedId.length < 4 || trimmedId.length > 100 ||
-        branchId.trim().isEmpty) {
-      throw ArgumentError('Valid national ID and authorized branch required');
-    }
-    // Never put national ID in a URL, query string, console or browser storage.
-    final response = await client.post(
-      _url('/api/v1/staff/clients/national-id-check'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Cache-Control': 'no-store',
-        'x-csrf-token': csrf,
-        if (!browserManagedOrigin) 'Origin': origin.toString(),
-      },
-      body: jsonEncode({
-        'national_id': trimmedId, 'branch_id': branchId,
-      }),
-    );
-    if (response.statusCode != 200 || response.bodyBytes.length > 2048) {
-      throw StateError('Identity screening unavailable or access denied');
-    }
-    final body = jsonDecode(response.body);
-    if (body is! Map<String, dynamic>) {
-      throw const FormatException('Invalid identity screening response');
-    }
-    return StaffNationalIdCheck.fromJson(body);
-  }
-
-  @override
-  Future<StaffRegistrationPreflight> validateRegistration(
-      Map<String, dynamic> draft) async {
-    final csrf = csrfToken?.call();
-    if (csrf == null || csrf.isEmpty) {
-      throw StateError('Registration validation requires CSRF proof');
-    }
-    final response = await client.post(
-      _url('/api/v1/staff/clients/registration-preflight'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Cache-Control': 'no-store',
-        'x-csrf-token': csrf,
-        if (!browserManagedOrigin) 'Origin': origin.toString(),
-      },
-      body: jsonEncode(draft),
-    );
-    if (response.statusCode != 200 || response.bodyBytes.length > 16384) {
-      throw StateError('Registration validation unavailable or denied');
+    if (response.statusCode != 201 || response.bodyBytes.length > 4096) {
+      throw StateError('Client registration was not confirmed by LoanHub');
     }
     final data = jsonDecode(response.body);
     if (data is! Map<String, dynamic>) {
-      throw const FormatException('Unexpected preflight response');
+      throw const FormatException('Unexpected registration confirmation');
     }
-    return StaffRegistrationPreflight.fromJson(data);
+    return StaffCreatedClientReceipt.fromJson(data);
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
