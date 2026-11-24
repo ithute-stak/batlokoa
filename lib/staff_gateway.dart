@@ -183,7 +183,7 @@ abstract class StaffNationalIdGateway {
   });
 }
 
-abstract class StaffRegistrationBranchGateway, StaffNewClientCreationGateway {
+abstract class StaffRegistrationBranchGateway {
   Future<List<Map<String, String>>> registrationBranches();
 }
 
@@ -238,7 +238,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
