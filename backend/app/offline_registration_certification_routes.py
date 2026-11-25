@@ -153,6 +153,8 @@ async def register_client_offline(request: Request):
             type(receipt["replayed"]) is not bool
         ):
             return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
+        if not isinstance(receipt["client_account_id"], str):
+            return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
         client_id = UUID(receipt["client_account_id"])
         if str(client_id) != receipt["client_account_id"].lower():
             return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
