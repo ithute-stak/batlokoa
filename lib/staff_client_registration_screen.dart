@@ -685,7 +685,7 @@ class _StaffClientRegistrationScreenState
         child: BfsPanel(child: Row(children: [
           Icon(_identityChecked ? Icons.info_outline : Icons.shield_outlined,
               color: _identityChecked
-                  ? BatlokoaDesign.accent : BatlokoaDesign.primary),
+                  ? BatlokoaDesign.primary : BatlokoaDesign.primary),
           const SizedBox(width: 11),
           Expanded(child: Text(_identityMessage!,
             key: const Key('register-identity-result'),
@@ -973,10 +973,24 @@ class _StaffClientRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    return Scaffold(
+    // Keep the approved red focus styling local to this registration flow.
+    final registrationTheme = Theme.of(context);
+    return Theme(
+      data: registrationTheme.copyWith(
+        inputDecorationTheme: registrationTheme.inputDecorationTheme.copyWith(
+          floatingLabelStyle: const TextStyle(
+            color: BatlokoaDesign.primary, fontWeight: FontWeight.w700),
+          focusedBorder: OutlineInputBorder(
+            borderSide: const BorderSide(
+              color: BatlokoaDesign.primary, width: 1.7),
+            borderRadius: BorderRadius.circular(BatlokoaDesign.fieldRadius),
+          ),
+        ),
+      ),
+      child: Scaffold(
     resizeToAvoidBottomInset: true,
     appBar: AppBar(title: const Text('Register client'),
-      backgroundColor: BatlokoaDesign.navy, foregroundColor: Colors.white),
+      backgroundColor: BatlokoaDesign.primaryDark, foregroundColor: Colors.white),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 760),
       child: Column(children: [
@@ -988,7 +1002,11 @@ class _StaffClientRegistrationScreenState
                   ' of ' + (_steps.length + 1).toString(),
                   style: const TextStyle(color: BatlokoaDesign.primary,
                       fontWeight: FontWeight.w800))),
-              const BfsPill(label: 'PREPARATION ONLY'),
+              const BfsPill(
+                 label: 'PREPARATION ONLY',
+                 color: BatlokoaDesign.primaryDark,
+                 background: Color(0xFFFFE5E7),
+               ),
             ]),
             const SizedBox(height: 12),
             LinearProgressIndicator(value: (_step + 2) / (_steps.length + 1),
@@ -1030,6 +1048,7 @@ class _StaffClientRegistrationScreenState
         ),
       ]),
     ))),
+    ),
   );
   }
 }
