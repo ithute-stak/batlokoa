@@ -408,7 +408,9 @@ def test_duplicate_top_level_and_nested_json_keys_are_rejected(monkeypatch):
 
 def test_nan_and_infinity_are_rejected_before_forwarding(monkeypatch):
     client, outgoing, csrf = setup(monkeypatch)
-    raw = json.dumps(full_capture())[:-1] + ',"monthly_income":NaN}'
+    raw = json.dumps(full_capture()).replace(
+        '"monthly_income": "6000.00"', '"monthly_income": NaN',
+    )
     response = client.post(
         PATH, content=raw, headers={
             "Origin": ORIGIN, "X-CSRF-Token": csrf,
