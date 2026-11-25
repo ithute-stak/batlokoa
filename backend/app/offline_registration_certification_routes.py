@@ -155,7 +155,10 @@ async def register_client_offline(request: Request):
             return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
         if not isinstance(receipt["client_account_id"], str):
             return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
-        client_id = UUID(receipt["client_account_id"])
+        try:
+            client_id = UUID(receipt["client_account_id"])
+        except ValueError:
+            return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
         if str(client_id) != receipt["client_account_id"].lower():
             return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
         return JSONResponse({
