@@ -973,7 +973,21 @@ class _StaffClientRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    return Scaffold(
+    // Keep the approved red focus styling local to this registration flow.
+    final registrationTheme = Theme.of(context);
+    return Theme(
+      data: registrationTheme.copyWith(
+        inputDecorationTheme: registrationTheme.inputDecorationTheme.copyWith(
+          floatingLabelStyle: const TextStyle(
+            color: BatlokoaDesign.primary, fontWeight: FontWeight.w700),
+          focusedBorder: OutlineInputBorder(
+            borderSide: const BorderSide(
+              color: BatlokoaDesign.primary, width: 1.7),
+            borderRadius: BorderRadius.circular(BatlokoaDesign.fieldRadius),
+          ),
+        ),
+      ),
+      child: Scaffold(
     resizeToAvoidBottomInset: true,
     appBar: AppBar(title: const Text('Register client'),
       backgroundColor: BatlokoaDesign.primaryDark, foregroundColor: Colors.white),
@@ -1034,6 +1048,7 @@ class _StaffClientRegistrationScreenState
         ),
       ]),
     ))),
+    ),
   );
   }
 }
