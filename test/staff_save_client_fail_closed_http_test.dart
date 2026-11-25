@@ -46,6 +46,38 @@ void main() {
     }
   });
 
+  test('registration confirmation rejects any unexpected fields', () async {
+    for (final additional in [
+      {'national_id': 'SYNTHETIC-NOT-REAL'},
+      {'bank_account': 'SYNTHETIC-ACCOUNT'},
+      {'company_id': 'untrusted'},
+      {'server_release_approved': true},
+    ]) {
+      final gateway = gatewayFor(MockClient((_) async =>
+          http.Response(jsonEncode({
+            'registered': true,
+            'client_account_id': accountId,
+            'replayed': false,
+            ...additional,
+          }), 201)));
+      await expectLater(submit(gateway), throwsFormatException);
+    }
+  });
+
+  test('strict 201 confirmation accepts both fresh save and replay', () async {
+    for (final replayed in [false, true]) {
+      final gateway = gatewayFor(MockClient((_) async =>
+          http.Response(jsonEncode({
+            'registered': true,
+            'client_account_id': accountId,
+            'replayed': replayed,
+          }), 201)));
+      final receipt = await submit(gateway);
+      expect(receipt.clientAccountId, accountId);
+      expect(receipt.replayed, replayed);
+    }
+  });
+
   test('oversized 201 confirmation is rejected before JSON parsing', () async {
     final gateway = gatewayFor(MockClient((_) async =>
         http.Response(' ' * 4097, 201)));
