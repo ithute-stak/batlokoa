@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'staff_location_capture.dart';
 import 'package:http/http.dart' as http;
 
 /// A read-only Batlokoa staff session snapshot. All values are returned by the
@@ -226,6 +227,10 @@ abstract class OwnerStaffManagementGateway {
   Future<List<Map<String, dynamic>>> ownerBranches();
   Future<List<Map<String, dynamic>>> ownerStaff();
   Future<String> createStaffAccount(Map<String, dynamic> draft);
+}
+
+abstract class StaffBranchLocationGateway {
+  Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
 }
 
 /// Explicitly disabled until a reviewed same-origin BFF client is installed.
@@ -545,6 +550,119 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Unexpected registration confirmation');
     }
     return StaffCreatedClientReceipt.fromJson(data);
+  }
+
+  @override
+  Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+      String path, String key) async {
+    final response = await client.get(_url(path),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    if (response.statusCode != 200 || response.bodyBytes.length > 262144) {
+      throw StateError('Owner staff directory unavailable or access denied');
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic> || body[key] is! List) {
+      throw const FormatException('Invalid owner staff response');
+    }
+    final rows = body[key] as List;
+    if (rows.length > 100 || rows.any((row) => row is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid owner staff list');
+    }
+    return List<Map<String, dynamic>>.unmodifiable(
+      rows.cast<Map<String, dynamic>>());
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> ownerBranches() =>
+      _readOwnerList('/api/v1/staff/manage/branches', 'branches');
+
+  @override
+  Future<List<Map<String, dynamic>>> ownerStaff() =>
+      _readOwnerList('/api/v1/staff/manage/members', 'members');
+
+  @override
+  Future<String> createStaffAccount(Map<String, dynamic> draft) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure owner action requires CSRF proof');
+    }
+    final response = await client.post(_url('/api/v1/staff/manage/members'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      },
+      body: jsonEncode(draft),
+    );
+    if (response.statusCode == 503) {
+      throw StateError('Staff account creation is not yet released.');
+    }
+    if (response.statusCode == 409) {
+      throw StateError('Account already exists or the company staff limit is reached.');
+    }
+    if (response.statusCode != 201) {
+      throw StateError('Staff registration was denied or needs owner verification.');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> ||
+        data['created'] != true || data['staff_id'] is! String) {
+      throw const FormatException('Staff registration not confirmed');
+    }
+    return data['staff_id'] as String;
+  }
+
+  @override
+  Future<void> logout() async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure employee sign-out requires CSRF proof');
+    }
+    final res = await client.post(_url('/api/v1/staff/logout'),
+        headers: {
+          'Accept': 'application/json',
+          'x-csrf-token': csrf,
+          if (!browserManagedOrigin) 'Origin': origin.toString(),
+        });
+    if (res.statusCode != 200) {
+      throw StateError('Employee sign-out failed');
+    }
+    final body = jsonDecode(res.body);
+    if (body is! Map<String, dynamic> || body['logged_out'] != true) {
+      throw StateError('Employee sign-out was not confirmed');
+    }
+  }
+}
+).hasMatch(branchId) ||
+        !capture.isUsableAt(DateTime.now())) {
+      throw StateError('Fresh location and secure owner session required');
+    }
+    final request = http.Request('POST',
+        _url('/api/v1/staff/manage/branches/$branchId/location'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      })
+      ..body = jsonEncode(capture.registrationPayload());
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 201 || response.bodyBytes.length > 4096) {
+      throw StateError('Branch location registration was not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['registered'] != true ||
+        data['radius_m'] != 10 || data['revision_id'] is! int ||
+        (data['revision_id'] as int) <= 0) {
+      throw const FormatException('Invalid registration receipt');
+    }
+    return data['revision_id'] as int;
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
