@@ -229,3 +229,31 @@ def test_untrusted_201_confirmation_never_claims_saved(monkeypatch, receipt):
     assert response.status_code == 503
     assert response.json() == {"code": "UNTRUSTED_REGISTRATION_RECEIPT"}
     assert len(outgoing) == 1
+
+
+def test_explicit_replay_keeps_same_idempotency_key(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch, response_body={
+        "registered": True, "client_account_id": str(ACCOUNT),
+        "replayed": True,
+    })
+    response = submit(client, csrf)
+    assert response.status_code == 201
+    assert response.json() == {
+        "registered": True, "client_account_id": str(ACCOUNT),
+        "replayed": True,
+    }
+    assert len(outgoing) == 1
+    assert outgoing[0].headers["idempotency-key"] == KEY
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504])
+def test_uncertain_responses_never_claim_client_saved(monkeypatch, status):
+    client, outgoing, csrf = setup(monkeypatch, upstream_status=status)
+    first = submit(client, csrf)
+    second = submit(client, csrf)
+    assert first.status_code == 503
+    assert second.status_code == 503
+    assert "registered" not in first.json()
+    assert "registered" not in second.json()
+    assert len(outgoing) == 2
+    assert all(req.headers["idempotency-key"] == KEY for req in outgoing)
