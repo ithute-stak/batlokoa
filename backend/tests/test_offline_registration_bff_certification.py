@@ -530,3 +530,41 @@ def test_stateful_loan_api_simulation_replay_conflict_and_branch_isolation(
     assert len(stored) == 1
     assert stored[(str(COMPANY), str(BRANCH), KEY)][0] == full_capture()
     assert outgoing == []  # the original default mock was not used
+
+
+def test_chunked_offline_registration_stays_bounded_and_lossless(monkeypatch):
+    """Exercise streaming body with no trusted Content-Length."""
+    client, outgoing, csrf = setup(monkeypatch)
+    body = json.dumps(full_capture()).encode()
+
+    def chunks():
+        for start in range(0, len(body), 19):
+            yield body[start:start + 19]
+
+    result = client.post(PATH, content=chunks(), headers={
+        "Origin": ORIGIN, "X-CSRF-Token": csrf,
+        "Idempotency-Key": KEY, "Content-Type": "application/json",
+    })
+    assert result.status_code == 201
+    assert result.json()["registered"] is True
+    assert len(outgoing) == 1
+    assert json.loads(outgoing[0].content) == full_capture()
+
+
+def test_chunked_oversized_registration_never_reaches_upstream(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    body = json.dumps({
+        **full_capture(), "physical_address": "A" * 33000,
+    }).encode()
+
+    def chunks():
+        for start in range(0, len(body), 997):
+            yield body[start:start + 997]
+
+    result = client.post(PATH, content=chunks(), headers={
+        "Origin": ORIGIN, "X-CSRF-Token": csrf,
+        "Idempotency-Key": KEY, "Content-Type": "application/json",
+    })
+    assert result.status_code == 413
+    assert result.json() == {"code": "REGISTRATION_TOO_LARGE"}
+    assert outgoing == []
