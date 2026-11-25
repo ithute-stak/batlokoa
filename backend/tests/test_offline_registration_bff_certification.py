@@ -336,3 +336,48 @@ def test_replay_after_ambiguous_upstream_result_uses_same_request_key(monkeypatc
     assert len(calls) == 2
     assert all(req.headers["idempotency-key"] == KEY for req in calls)
     assert all(json.loads(req.content) == full_capture() for req in calls)
+
+
+def test_missing_or_malformed_content_type_never_confirms(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    config = client.app.state.staff_login_config
+
+    for response in (
+        httpx.Response(201, content=b"ok", headers={
+            "content-type": "text/plain",
+        }),
+        httpx.Response(201, content=b"{invalid", headers={
+            "content-type": "application/json",
+        }),
+        httpx.Response(201, json={
+            "registered": True, "client_account_id": str(ACCOUNT),
+            "replayed": False, "secret": "x" * 5000,
+        }),
+    ):
+        def handler(_):
+            return response
+
+        config.client = httpx.Client(transport=httpx.MockTransport(handler))
+        result = submit(client, csrf)
+        assert result.status_code == 503
+        assert "registered" not in result.json()
+        assert str(ACCOUNT) not in result.text
+
+
+def test_oversized_request_rejected_without_upstream_call(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    oversized = {**full_capture(), "physical_address": "x" * 33000}
+    response = submit(client, csrf, body=oversized)
+    assert response.status_code == 413
+    assert response.json() == {"code": "REGISTRATION_TOO_LARGE"}
+    assert outgoing == []
+
+
+def test_malformed_client_branch_type_rejected_before_upstream(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    for bad in (None, 5, False, [], {}):
+        result = submit(client, csrf, body={
+            **full_capture(), "branch_id": bad,
+        })
+        assert result.status_code == 422
+    assert outgoing == []
