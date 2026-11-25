@@ -4,9 +4,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.staff_authorization import VerifiedStaffIdentity, StaffAccessDenied
-from app.staff_branch_location import ActiveBranch, register_branch_location
-from app.staff_geofence import Position
+from backend.app.staff_authorization import VerifiedStaffIdentity, StaffAccessDenied
+from backend.app.staff_branch_location import ActiveBranch, register_branch_location
+from backend.app.staff_geofence import Position
 
 
 COMPANY = uuid4()
