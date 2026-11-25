@@ -110,9 +110,14 @@ async def register_client_offline(request: Request):
         size = request.headers.get("content-length")
         if size is not None and int(size) > _MAX_REQUEST_BYTES:
             return _deny("REGISTRATION_TOO_LARGE", 413)
-        raw = await request.body()
-        if len(raw) > _MAX_REQUEST_BYTES:
-            return _deny("REGISTRATION_TOO_LARGE", 413)
+        chunks = []
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > _MAX_REQUEST_BYTES:
+                return _deny("REGISTRATION_TOO_LARGE", 413)
+            chunks.append(chunk)
+        raw = b"".join(chunks)
         payload = json.loads(
             raw, object_pairs_hook=_strict_pairs,
             parse_constant=_reject_nonfinite,
