@@ -120,7 +120,7 @@ def submit(client, csrf, *, body=None, origin=ORIGIN, key=KEY):
 
 def test_offline_post_absent_from_real_app():
     assert all(
-        route.path != PATH
+        getattr(route, "path", None) != PATH
         for route in production_app.routes
     )
 
