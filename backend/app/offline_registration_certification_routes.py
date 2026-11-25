@@ -99,6 +99,8 @@ async def register_client_offline(request: Request):
             _DISALLOWED_CLAIMS.intersection(payload)
         ):
             return _deny("INVALID_REGISTRATION", 422)
+        if not isinstance(payload.get("branch_id"), str):
+            return _deny("INVALID_REGISTRATION", 422)
         branch_id = UUID(payload["branch_id"])
     except (KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError):
         return _deny("INVALID_REGISTRATION", 422)
