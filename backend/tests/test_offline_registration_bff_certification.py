@@ -473,3 +473,60 @@ def test_upstream_misleading_content_type_is_not_trusted(monkeypatch):
     result = submit(client, csrf)
     assert result.status_code == 503
     assert "registered" not in result.json()
+
+
+def test_stateful_loan_api_simulation_replay_conflict_and_branch_isolation(
+    monkeypatch,
+):
+    """Exercise BFF HTTP transport across multiple synthetic API calls.
+
+    This is an in-memory LoanHub API simulation; the real PostgreSQL-backed
+    cross-repository sandbox run is a separate release gate.
+    """
+    client, outgoing, csrf = setup(monkeypatch)
+    cfg = client.app.state.staff_login_config
+    stored = {}
+
+    def loanhub_simulation(request):
+        data = json.loads(request.content)
+        scope = (
+            request.headers["x-company-id"], data["branch_id"],
+            request.headers["idempotency-key"],
+        )
+        if scope in stored:
+            existing_payload, account_id = stored[scope]
+            if existing_payload != data:
+                return httpx.Response(409, json={"code": "REGISTRATION_CONFLICT"})
+            return httpx.Response(201, json={
+                "registered": True, "client_account_id": account_id,
+                "replayed": True,
+            })
+        stored[scope] = (data, str(ACCOUNT))
+        return httpx.Response(201, json={
+            "registered": True, "client_account_id": str(ACCOUNT),
+            "replayed": False,
+        })
+
+    cfg.client = httpx.Client(
+        transport=httpx.MockTransport(loanhub_simulation),
+    )
+    first = submit(client, csrf)
+    replay = submit(client, csrf)
+    changed = submit(
+        client, csrf, body={**full_capture(), "first_name": "Changed"},
+    )
+    other_branch = submit(
+        client, csrf, body={**full_capture(), "branch_id": str(OTHER_BRANCH)},
+    )
+    assert first.status_code == 201
+    assert first.json()["registered"] is True
+    assert first.json()["replayed"] is False
+    assert replay.status_code == 201
+    assert replay.json()["replayed"] is True
+    assert replay.json()["client_account_id"] == first.json()["client_account_id"]
+    assert changed.status_code == 409
+    assert "registered" not in changed.json()
+    assert other_branch.status_code == 403
+    assert len(stored) == 1
+    assert stored[(str(COMPANY), str(BRANCH), KEY)][0] == full_capture()
+    assert outgoing == []  # the original default mock was not used
