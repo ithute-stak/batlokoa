@@ -44,6 +44,20 @@ def _deny(code: str, status: int) -> JSONResponse:
     return JSONResponse({"code": code}, status_code=status, headers=NO_STORE)
 
 
+def _strict_pairs(pairs):
+    """Refuse ambiguous JSON objects at every nesting level."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Repeated registration JSON field")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite(_value):
+    raise ValueError("Non-finite registration number")
+
+
 def _authorized_offline_upstream(origin: str) -> bool:
     parts = urlsplit(origin)
     return (
@@ -94,7 +108,10 @@ async def register_client_offline(request: Request):
         raw = await request.body()
         if len(raw) > _MAX_REQUEST_BYTES:
             return _deny("REGISTRATION_TOO_LARGE", 413)
-        payload = json.loads(raw)
+        payload = json.loads(
+            raw, object_pairs_hook=_strict_pairs,
+            parse_constant=_reject_nonfinite,
+        )
         if not isinstance(payload, dict) or (
             _DISALLOWED_CLAIMS.intersection(payload)
         ):
