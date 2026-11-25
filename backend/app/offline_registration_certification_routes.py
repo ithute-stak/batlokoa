@@ -58,6 +58,11 @@ def _reject_nonfinite(_value):
     raise ValueError("Non-finite registration number")
 
 
+def _is_json_content_type(value: str) -> bool:
+    """Only the JSON media type, not a substring or lookalike, is accepted."""
+    return value.split(";", 1)[0].strip().lower() == "application/json"
+
+
 def _authorized_offline_upstream(origin: str) -> bool:
     parts = urlsplit(origin)
     return (
@@ -96,7 +101,7 @@ async def register_client_offline(request: Request):
     except StaffVerificationUnavailable:
         cfg.store.revoke(session_id)
         return _deny("UNAUTHENTICATED", 401)
-    if "application/json" not in request.headers.get("content-type", "").lower():
+    if not _is_json_content_type(request.headers.get("content-type", "")):
         return _deny("INVALID_REGISTRATION", 415)
     key = request.headers.get("idempotency-key", "")
     if not _KEY.fullmatch(key):
@@ -161,11 +166,15 @@ async def register_client_offline(request: Request):
             return _deny("REGISTRATION_UNAVAILABLE", 503)
         if (
             len(upstream.content) > _MAX_CONFIRMATION_BYTES or
-            "application/json" not in
-                upstream.headers.get("content-type", "").lower()
+            not _is_json_content_type(
+                upstream.headers.get("content-type", "")
+            )
         ):
             return _deny("UNTRUSTED_REGISTRATION_RECEIPT", 503)
-        receipt = upstream.json()
+        receipt = json.loads(
+            upstream.content, object_pairs_hook=_strict_pairs,
+            parse_constant=_reject_nonfinite,
+        )
         if not isinstance(receipt, dict) or set(receipt) != {
             "registered", "client_account_id", "replayed",
         } or receipt["registered"] is not True or (
