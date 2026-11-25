@@ -1,6 +1,6 @@
 import pytest
 
-from app.staff_geofence import LocationState, Position, classify, distance_m
+from backend.app.staff_geofence import LocationState, Position, classify, distance_m
 
 
 BRANCH = Position(-29.31, 27.48, 1.0)
