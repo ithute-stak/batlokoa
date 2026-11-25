@@ -420,3 +420,56 @@ def test_nan_and_infinity_are_rejected_before_forwarding(monkeypatch):
     )
     assert response.status_code == 422
     assert outgoing == []
+
+
+def test_json_media_type_is_exact_and_not_a_substring(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    raw = json.dumps(full_capture())
+    for invalid in (
+        "application/json-corrupt",
+        "text/plain; note=application/json",
+        "application/jsonp",
+        "application/problem+json",
+    ):
+        response = client.post(PATH, content=raw, headers={
+            "Origin": ORIGIN, "X-CSRF-Token": csrf,
+            "Idempotency-Key": KEY, "Content-Type": invalid,
+        })
+        assert response.status_code == 415
+    assert outgoing == []
+
+
+def test_upstream_duplicate_receipt_fields_are_not_trusted(monkeypatch):
+    client, _, csrf = setup(monkeypatch)
+    cfg = client.app.state.staff_login_config
+    duplicate = (
+        '{"registered":true,"client_account_id":"' + str(ACCOUNT)
+        + '","replayed":false,"replayed":true}'
+    )
+
+    def response_handler(_):
+        return httpx.Response(201, content=duplicate.encode(), headers={
+            "Content-Type": "application/json",
+        })
+
+    cfg.client = httpx.Client(transport=httpx.MockTransport(response_handler))
+    result = submit(client, csrf)
+    assert result.status_code == 503
+    assert "registered" not in result.json()
+
+
+def test_upstream_misleading_content_type_is_not_trusted(monkeypatch):
+    client, _, csrf = setup(monkeypatch)
+    cfg = client.app.state.staff_login_config
+
+    def response_handler(_):
+        return httpx.Response(201, json={
+            "registered": True,
+            "client_account_id": str(ACCOUNT),
+            "replayed": False,
+        }, headers={"Content-Type": "text/plain; name=application/json"})
+
+    cfg.client = httpx.Client(transport=httpx.MockTransport(response_handler))
+    result = submit(client, csrf)
+    assert result.status_code == 503
+    assert "registered" not in result.json()
