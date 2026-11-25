@@ -381,3 +381,40 @@ def test_malformed_client_branch_type_rejected_before_upstream(monkeypatch):
         })
         assert result.status_code == 422
     assert outgoing == []
+
+
+def test_duplicate_top_level_and_nested_json_keys_are_rejected(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    body = json.dumps(full_capture())
+    # Duplicate fields can otherwise be silently overwritten by json.loads.
+    duplicate_branch = body[:-1] + ',"branch_id":"' + str(OTHER_BRANCH) + '"}'
+    duplicate_nested = body.replace(
+        '"account_number": "61234567890"',
+        '"account_number": "61234567890", "account_number": "999999999"',
+    )
+    for raw in (duplicate_branch, duplicate_nested):
+        response = client.post(
+            PATH, content=raw,
+            headers={
+                "Origin": ORIGIN, "X-CSRF-Token": csrf,
+                "Idempotency-Key": KEY,
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 422
+        assert response.json() == {"code": "INVALID_REGISTRATION"}
+    assert outgoing == []
+
+
+def test_nan_and_infinity_are_rejected_before_forwarding(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    raw = json.dumps(full_capture())[:-1] + ',"monthly_income":NaN}'
+    response = client.post(
+        PATH, content=raw, headers={
+            "Origin": ORIGIN, "X-CSRF-Token": csrf,
+            "Idempotency-Key": KEY,
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == 422
+    assert outgoing == []
