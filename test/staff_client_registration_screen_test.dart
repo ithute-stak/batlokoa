@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:batlokoa/staff_gateway.dart';
+import 'package:batlokoa/batlokoa_design.dart';
+import 'package:batlokoa/bfs_widgets.dart';
 import 'package:batlokoa/staff_client_registration_screen.dart';
 import 'package:batlokoa/staff_client_directory_screen.dart';
 
@@ -110,6 +112,31 @@ Future<void> unlock(WidgetTester tester, MockIdentityGateway gateway) async {
 }
 
 void main() {
+  testWidgets('registration uses approved red branding without enabling save',
+      (tester) async {
+    final gateway = MockIdentityGateway();
+    await showForm(tester, gateway);
+    final bar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(bar.backgroundColor, BatlokoaDesign.primaryDark);
+    expect(bar.foregroundColor, Colors.white);
+    final badge = tester.widget<BfsPill>(
+      find.widgetWithText(BfsPill, 'PREPARATION ONLY'));
+    expect(badge.color, BatlokoaDesign.primaryDark);
+    expect(badge.background, const Color(0xFFFFE5E7));
+    final fieldTheme = Theme.of(tester.element(
+      find.byKey(const Key('register-national-id'))));
+    expect(fieldTheme.inputDecorationTheme.floatingLabelStyle?.color,
+        BatlokoaDesign.primary);
+    expect(
+      (fieldTheme.inputDecorationTheme.focusedBorder as OutlineInputBorder)
+          .borderSide.color,
+      BatlokoaDesign.primary,
+    );
+    expect(gateway.checks, 0);
+    expect(tester.widget<FilledButton>(
+      find.byKey(const Key('register-continue'))).onPressed, isNull);
+  });
+
   testWidgets('mobile keyboard reveals National ID without fixed header/footer',
       (tester) async {
     final gateway = MockIdentityGateway();
