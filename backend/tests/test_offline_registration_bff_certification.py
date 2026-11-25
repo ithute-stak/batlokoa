@@ -257,3 +257,82 @@ def test_uncertain_responses_never_claim_client_saved(monkeypatch, status):
     assert "registered" not in second.json()
     assert len(outgoing) == 2
     assert all(req.headers["idempotency-key"] == KEY for req in outgoing)
+
+
+def test_expired_or_revoked_staff_session_cannot_forward(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    cfg = client.app.state.staff_login_config
+    # A revoked session must be rejected independently of its CSRF cookie.
+    session_id = client.cookies.get(COOKIE)
+    cfg.store.revoke(session_id)
+    response = submit(client, csrf)
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHENTICATED"
+    assert outgoing == []
+
+
+def test_expired_access_token_cannot_forward(monkeypatch):
+    from backend.app.loanhub_staff_verifier import StaffVerificationUnavailable
+
+    client, outgoing, csrf = setup(monkeypatch)
+    cfg = client.app.state.staff_login_config
+
+    def unavailable(_):
+        raise StaffVerificationUnavailable("Expired synthetic staff token")
+
+    cfg.verifier.verify = unavailable
+    response = submit(client, csrf)
+    assert response.status_code == 401
+    assert outgoing == []
+    assert client.cookies.get(COOKIE) is not None
+
+
+@pytest.mark.parametrize("transport_exc", [
+    httpx.ReadTimeout("simulated timeout"),
+    httpx.ConnectError("simulated disconnect"),
+    httpx.RemoteProtocolError("simulated lost response"),
+])
+def test_transport_failure_must_not_claim_client_saved(monkeypatch, transport_exc):
+    client, outgoing, csrf = setup(monkeypatch)
+
+    def broken(_):
+        raise transport_exc
+
+    cfg = client.app.state.staff_login_config
+    cfg.client = httpx.Client(transport=httpx.MockTransport(broken))
+    result = submit(client, csrf)
+    assert result.status_code == 503
+    assert result.json() == {"code": "REGISTRATION_UNAVAILABLE"}
+    assert "registered" not in result.json()
+    assert outgoing == []
+
+
+def test_replay_after_ambiguous_upstream_result_uses_same_request_key(monkeypatch):
+    client, outgoing, csrf = setup(monkeypatch)
+    calls = []
+
+    def intermittent(request):
+        calls.append(request)
+        if len(calls) == 1:
+            # LoanHub may have committed before its response was lost.
+            raise httpx.ReadTimeout("response lost after commit")
+        return httpx.Response(201, json={
+            "registered": True,
+            "client_account_id": str(ACCOUNT),
+            "replayed": True,
+        })
+
+    cfg = client.app.state.staff_login_config
+    cfg.client = httpx.Client(transport=httpx.MockTransport(intermittent))
+    uncertain = submit(client, csrf)
+    assert uncertain.status_code == 503
+    assert "registered" not in uncertain.json()
+    replay = submit(client, csrf)
+    assert replay.status_code == 201
+    assert replay.json() == {
+        "registered": True, "client_account_id": str(ACCOUNT),
+        "replayed": True,
+    }
+    assert len(calls) == 2
+    assert all(req.headers["idempotency-key"] == KEY for req in calls)
+    assert all(json.loads(req.content) == full_capture() for req in calls)
