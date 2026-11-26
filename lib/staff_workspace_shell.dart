@@ -11,6 +11,7 @@ import 'staff_attendance_screen.dart';
 import 'staff_monitoring_scheduler.dart';
 import 'owner_attendance_alerts_screen.dart';
 import 'owner_access_events_screen.dart';
+import 'owner_work_roster_screen.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
 class StaffWorkspaceShell extends StatefulWidget {
@@ -145,6 +146,19 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
   static const _ownerAccessReleased = bool.fromEnvironment('OWNER_ACCESS_INBOX_ENABLED');
   bool get canViewAccessEvents => _ownerAccessReleased && owner &&
       widget.gateway is OwnerAccessInboxGateway;
+
+  static const _ownerRosterReleased = bool.fromEnvironment('OWNER_WORK_ROSTER_ENABLED');
+  bool get canManageWorkRoster => _ownerRosterReleased && owner &&
+      widget.gateway is OwnerWorkRosterGateway &&
+      widget.gateway is OwnerRosterEmployeeGateway;
+
+  void openWorkRoster() {
+    if (!canManageWorkRoster || widget.busy || !_foreground) return;
+    open(OwnerWorkRosterScreen(
+      roster: widget.gateway as OwnerWorkRosterGateway,
+      directory: widget.gateway as OwnerRosterEmployeeGateway,
+    ));
+  }
 
   void openAccessEvents() {
     if (!canViewAccessEvents || widget.busy) return;
@@ -293,6 +307,11 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
     ]),
     const SizedBox(height: 12),
     actionGrid([
+      if (canManageWorkRoster)
+        KeyedSubtree(key: const Key('owner-open-work-roster'),
+          child: BfsActionPanel(icon: Icons.calendar_month_outlined,
+            title: 'Working schedules', description: 'Assign employee working and non-working days',
+            onPressed: openWorkRoster)),
       if (canViewAccessEvents)
         KeyedSubtree(key: const Key('owner-open-access-events'),
           child: BfsActionPanel(icon: Icons.login,
