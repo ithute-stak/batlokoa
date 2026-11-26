@@ -15,6 +15,7 @@ from .staff_login_routes import COOKIE, CSRF_COOKIE, NO_STORE, _config, _same_or
 from .staff_authorization import StaffAccessDenied
 from .staff_attendance import AttendanceAction, AttendanceRejected
 from .staff_attendance_store import AttendanceStore
+from .staff_attendance_monitor_store import AttendanceMonitorStore
 from .staff_branch_location import ActiveBranch
 from .staff_geofence import Position
 
@@ -30,22 +31,17 @@ class AttendanceCapture(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-def _record(action: AttendanceAction, payload: AttendanceCapture, request: Request):
-    store = getattr(request.app.state, "staff_attendance_store", None)
-    cfg = _config(request)
-    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
-            or not isinstance(store, AttendanceStore) or cfg is None):
-        return fail("ATTENDANCE_DISABLED", 503)
+def _authorize_capture(payload: AttendanceCapture, request: Request, cfg):
     if not _same_origin(request, cfg.public_origin):
-        return fail("FORBIDDEN_ORIGIN", 403)
+        return None, None, fail("FORBIDDEN_ORIGIN", 403)
     record = cfg.store.resolve(request.cookies.get(COOKIE, ""))
     if record is None:
-        return fail("UNAUTHENTICATED", 401)
+        return None, None, fail("UNAUTHENTICATED", 401)
     csrf = request.headers.get("x-csrf-token", "")
     if (not csrf or not csrf.isascii()
             or request.cookies.get(CSRF_COOKIE) != csrf
             or not secrets.compare_digest(csrf, record.csrf_token)):
-        return fail("CSRF_REJECTED", 403)
+        return None, None, fail("CSRF_REJECTED", 403)
     try:
         base = cfg.verifier
         staff = LoanHubStaffVerifier(
@@ -54,13 +50,13 @@ def _record(action: AttendanceAction, payload: AttendanceCapture, request: Reque
             allow_unverified_company_owner=False,
         ).verify(record.access_token)
     except StaffVerificationUnavailable:
-        return fail("STAFF_VERIFICATION_REQUIRED", 403)
+        return None, None, fail("STAFF_VERIFICATION_REQUIRED", 403)
     if not (payload.branch_id in staff.branch_ids or
             (staff.company_wide_scope is True and
              staff.role in {"COMPANY_OWNER", "COMPANY_ADMIN"})):
-        return fail("BRANCH_NOT_AUTHORIZED", 403)
+        return None, None, fail("BRANCH_NOT_AUTHORIZED", 403)
     if payload.captured_at.utcoffset() is None:
-        return fail("LOCATION_UNVERIFIED", 422)
+        return None, None, fail("LOCATION_UNVERIFIED", 422)
     # Fetch the directory using the actual verified employee role, never an
     # elevated owner role or browser-supplied company header.
     try:
@@ -75,27 +71,39 @@ def _record(action: AttendanceAction, payload: AttendanceCapture, request: Reque
             )
         if (response.status_code != 200 or len(response.content) > 131072
                 or "application/json" not in response.headers.get("content-type", "").lower()):
-            return fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
+            return None, None, fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
         data = response.json()
         if not isinstance(data, list) or len(data) > 100:
-            return fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
+            return None, None, fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
         seen, active = set(), set()
         for item in data:
             if UUID(str(item["company_id"])) != staff.company_id:
-                return fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
+                return None, None, fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
             identifier = UUID(str(item["id"]))
             if identifier in seen:
-                return fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
+                return None, None, fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
             seen.add(identifier)
             if item.get("is_active") is True:
                 active.add(identifier)
         if payload.branch_id not in active:
-            return fail("BRANCH_NOT_AUTHORIZED", 403)
+            return None, None, fail("BRANCH_NOT_AUTHORIZED", 403)
     except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
-        return fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
+        return None, None, fail("BRANCH_DIRECTORY_UNAVAILABLE", 503)
+    return staff, ActiveBranch(staff.company_id, payload.branch_id, True), None
+
+
+def _record(action: AttendanceAction, payload: AttendanceCapture, request: Request):
+    store = getattr(request.app.state, "staff_attendance_store", None)
+    cfg = _config(request)
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or not isinstance(store, AttendanceStore) or cfg is None):
+        return fail("ATTENDANCE_DISABLED", 503)
+    staff, branch, denial = _authorize_capture(payload, request, cfg)
+    if denial is not None:
+        return denial
     try:
         session_id, event_id, event = store.record(
-            staff, ActiveBranch(staff.company_id, payload.branch_id, True),
+            staff, branch,
             Position(payload.latitude, payload.longitude, payload.accuracy_m),
             action, captured_at=payload.captured_at,
         )
@@ -169,3 +177,44 @@ def attendance_status(request: Request):
 def attendance_history(request: Request, limit: int = Query(30, ge=1, le=100),
                        before: int | None = Query(None, gt=0, le=9223372036854775807)):
     return _read(request, limit=limit, before=before)
+
+
+class MonitorCapture(AttendanceCapture):
+    session_id: int = Field(gt=0, le=9223372036854775807, strict=True)
+
+
+@router.post("/api/v1/staff/attendance/monitor", include_in_schema=False)
+def monitor_attendance(payload: MonitorCapture, request: Request):
+    cfg = _config(request)
+    store = getattr(request.app.state, "staff_attendance_monitor_store", None)
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "staff_attendance_monitor_enabled", False) is not True
+            or not isinstance(store, AttendanceMonitorStore) or cfg is None):
+        return fail("MONITOR_DISABLED", 503)
+    staff, branch, denial = _authorize_capture(payload, request, cfg)
+    if denial is not None:
+        return denial
+    try:
+        reading, state, alert = store.record(
+            staff, branch, payload.session_id,
+            Position(payload.latitude, payload.longitude, payload.accuracy_m),
+            captured_at=payload.captured_at,
+        )
+    except StaffAccessDenied:
+        return fail("BRANCH_NOT_AUTHORIZED", 403)
+    except AttendanceRejected as exc:
+        code = str(exc)
+        if code in {"NO_ACTIVE_SESSION", "LOCATION_REPLAYED"}:
+            return fail(code, 409)
+        if code == "LOCATION_UNVERIFIED":
+            return fail(code, 422)
+        return fail("MONITOR_UNAVAILABLE", 503)
+    except (psycopg.Error, ValueError):
+        return fail("MONITOR_UNAVAILABLE", 503)
+    return JSONResponse({
+        "session_id": payload.session_id,
+        "reading": reading.value,
+        "last_confirmed": state.last_confirmed.value,
+        "observed_at": state.last_observed_at.isoformat(),
+        "transition_recorded": alert is not None,
+    }, headers=NO_STORE)
