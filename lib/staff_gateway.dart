@@ -260,6 +260,23 @@ abstract class StaffAttendanceGateway {
   Future<void> recordAttendance(String branchId, StaffLocationCapture capture, {required bool clockIn});
 }
 
+enum StaffPerimeterReading { inside, outside, unverified }
+
+class StaffMonitorReceipt {
+  final int sessionId;
+  final StaffPerimeterReading reading;
+  final StaffPerimeterReading lastConfirmed;
+  final DateTime observedAt;
+  final bool transitionRecorded;
+  const StaffMonitorReceipt(this.sessionId, this.reading, this.lastConfirmed,
+      this.observedAt, this.transitionRecorded);
+}
+
+abstract class StaffMonitoringGateway {
+  Future<StaffMonitorReceipt> submitObservation(
+      StaffAttendanceSession session, StaffLocationCapture capture);
+}
+
 abstract class StaffBranchLocationGateway {
   Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
 }
@@ -291,7 +308,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -782,6 +799,143 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       }
       throw StateError('Attendance was not confirmed. Refresh status before retrying.');
     }
+  }
+
+  @override
+  Future<StaffMonitorReceipt> submitObservation(
+      StaffAttendanceSession session, StaffLocationCapture capture) async {
+    final csrf = csrfToken?.call();
+    final age = DateTime.now().difference(capture.capturedAt);
+    if (csrf == null || csrf.isEmpty || session.id <= 0 ||
+        session.clockedOutAt != null ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+      String path, String key) async {
+    final response = await client.get(_url(path),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    if (response.statusCode != 200 || response.bodyBytes.length > 262144) {
+      throw StateError('Owner staff directory unavailable or access denied');
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic> || body[key] is! List) {
+      throw const FormatException('Invalid owner staff response');
+    }
+    final rows = body[key] as List;
+    if (rows.length > 100 || rows.any((row) => row is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid owner staff list');
+    }
+    return List<Map<String, dynamic>>.unmodifiable(
+      rows.cast<Map<String, dynamic>>());
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> ownerBranches() =>
+      _readOwnerList('/api/v1/staff/manage/branches', 'branches');
+
+  @override
+  Future<List<Map<String, dynamic>>> ownerStaff() =>
+      _readOwnerList('/api/v1/staff/manage/members', 'members');
+
+  @override
+  Future<String> createStaffAccount(Map<String, dynamic> draft) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure owner action requires CSRF proof');
+    }
+    final response = await client.post(_url('/api/v1/staff/manage/members'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      },
+      body: jsonEncode(draft),
+    );
+    if (response.statusCode == 503) {
+      throw StateError('Staff account creation is not yet released.');
+    }
+    if (response.statusCode == 409) {
+      throw StateError('Account already exists or the company staff limit is reached.');
+    }
+    if (response.statusCode != 201) {
+      throw StateError('Staff registration was denied or needs owner verification.');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> ||
+        data['created'] != true || data['staff_id'] is! String) {
+      throw const FormatException('Staff registration not confirmed');
+    }
+    return data['staff_id'] as String;
+  }
+
+  @override
+  Future<void> logout() async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure employee sign-out requires CSRF proof');
+    }
+    final res = await client.post(_url('/api/v1/staff/logout'),
+        headers: {
+          'Accept': 'application/json',
+          'x-csrf-token': csrf,
+          if (!browserManagedOrigin) 'Origin': origin.toString(),
+        });
+    if (res.statusCode != 200) {
+      throw StateError('Employee sign-out failed');
+    }
+    final body = jsonDecode(res.body);
+    if (body is! Map<String, dynamic> || body['logged_out'] != true) {
+      throw StateError('Employee sign-out was not confirmed');
+    }
+  }
+}
+).hasMatch(session.branchId) ||
+        !capture.latitude.isFinite || capture.latitude.abs() > 90 ||
+        !capture.longitude.isFinite || capture.longitude.abs() > 180 ||
+        !capture.accuracyM.isFinite || capture.accuracyM <= 0 ||
+        age < const Duration(seconds: -5) || age > const Duration(seconds: 30)) {
+      throw StateError('Active session and fresh location required');
+    }
+    final request = http.Request('POST', _url('/api/v1/staff/attendance/monitor'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Content-Type': 'application/json', 'Accept': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      })
+      ..body = jsonEncode({
+        'session_id': session.id, 'branch_id': session.branchId,
+        'latitude': capture.latitude, 'longitude': capture.longitude,
+        'accuracy_m': capture.accuracyM,
+        'captured_at': capture.capturedAt.toUtc().toIso8601String(),
+      });
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 4096) {
+      throw StateError('Monitoring observation not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['session_id'] is! int ||
+        data['session_id'] != session.id || data['observed_at'] is! String ||
+        data['transition_recorded'] is! bool) {
+      throw const FormatException('Invalid monitoring response');
+    }
+    StaffPerimeterReading parse(Object? value) {
+      switch (value) {
+        case 'verified_inside': return StaffPerimeterReading.inside;
+        case 'verified_outside': return StaffPerimeterReading.outside;
+        case 'unverified': return StaffPerimeterReading.unverified;
+        default: throw const FormatException('Invalid perimeter state');
+      }
+    }
+    final reading = parse(data['reading']);
+    final confirmed = parse(data['last_confirmed']);
+    final observed = DateTime.parse(data['observed_at'] as String);
+    final transition = data['transition_recorded'] as bool;
+    if (!observed.isUtc || confirmed == StaffPerimeterReading.unverified ||
+        (transition && reading != confirmed)) {
+      throw const FormatException('Inconsistent monitoring response');
+    }
+    return StaffMonitorReceipt(session.id, reading, confirmed, observed, transition);
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
