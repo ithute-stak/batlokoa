@@ -334,6 +334,26 @@ abstract class OwnerAccessInboxGateway {
   Future<OwnerAccessEventPage> accessEvents({OwnerAccessCursor? before, int limit = 50});
 }
 
+
+class OwnerWorkRosterRow {
+  final String employeeId, recordedBy;
+  final bool scheduledToWork;
+  final DateTime recordedAt;
+  const OwnerWorkRosterRow(this.employeeId, this.scheduledToWork,
+      this.recordedBy, this.recordedAt);
+}
+
+class OwnerWorkRosterPage {
+  final List<OwnerWorkRosterRow> rows;
+  final String? nextAfter;
+  const OwnerWorkRosterPage(this.rows, this.nextAfter);
+}
+
+abstract class OwnerWorkRosterGateway {
+  Future<OwnerWorkRosterPage> workRoster(String workDate, {String? after, int limit = 50});
+  Future<bool> setWorkDay(String employeeId, String workDate, {required bool scheduledToWork});
+}
+
 abstract class StaffBranchLocationGateway {
   Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
 }
@@ -365,7 +385,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -998,6 +1018,90 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Unexpected access page cursor');
     }
     return OwnerAccessEventPage(List.unmodifiable(events), next);
+  }
+
+
+  static bool _rosterUuid(Object? value) => value is String &&
+      RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$').hasMatch(value);
+
+  static bool _rosterDate(String value) {
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
+    final date = DateTime.tryParse(value);
+    return date != null && date.year > 0 &&
+        date.toIso8601String().substring(0, 10) == value;
+  }
+
+  @override
+  Future<OwnerWorkRosterPage> workRoster(String workDate, {String? after, int limit = 50}) async {
+    if (!_rosterDate(workDate) || limit < 1 || limit > 100 ||
+        (after != null && !_rosterUuid(after))) {
+      throw ArgumentError('Invalid roster query');
+    }
+    final request = http.Request('GET', _url('/api/v1/staff/manage/attendance/work-roster')
+        .replace(queryParameters: {'work_date': workDate, 'limit': '$limit',
+          if (after != null) 'after': after}))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Work roster unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['rows'] is! List ||
+        !data.containsKey('next_after')) {
+      throw const FormatException('Invalid work roster page');
+    }
+    final raw = data['rows'] as List;
+    if (raw.length > limit) throw const FormatException('Oversized roster page');
+    final rows = <OwnerWorkRosterRow>[];
+    String? previous = after;
+    for (final row in raw) {
+      if (row is! Map<String, dynamic> || !_rosterUuid(row['employee_id']) ||
+          !_rosterUuid(row['recorded_by']) || row['scheduled_to_work'] is! bool ||
+          row['recorded_at'] is! String) {
+        throw const FormatException('Invalid roster row');
+      }
+      final employee = row['employee_id'] as String;
+      final recorded = DateTime.parse(row['recorded_at'] as String);
+      if (!recorded.isUtc || (previous != null && employee.compareTo(previous) <= 0)) {
+        throw const FormatException('Invalid roster ordering or time');
+      }
+      rows.add(OwnerWorkRosterRow(employee, row['scheduled_to_work'] as bool,
+          row['recorded_by'] as String, recorded));
+      previous = employee;
+    }
+    final cursor = data['next_after'];
+    if (cursor != null && (!_rosterUuid(cursor) || rows.length != limit || cursor != previous)) {
+      throw const FormatException('Invalid roster cursor');
+    }
+    return OwnerWorkRosterPage(List.unmodifiable(rows), cursor as String?);
+  }
+
+  @override
+  Future<bool> setWorkDay(String employeeId, String workDate, {required bool scheduledToWork}) async {
+    if (!_rosterUuid(employeeId) || !_rosterDate(workDate)) {
+      throw ArgumentError('Invalid employee or work date');
+    }
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) throw StateError('Secure owner action requires CSRF proof');
+    final request = http.Request('POST', _url('/api/v1/staff/manage/attendance/work-roster'))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString()})
+      ..body = jsonEncode({'employee_id': employeeId, 'work_date': workDate,
+        'scheduled_to_work': scheduledToWork});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 8192) {
+      throw StateError('Roster update not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['employee_id'] != employeeId ||
+        data['work_date'] != workDate || data['scheduled_to_work'] != scheduledToWork ||
+        data['changed'] is! bool) {
+      throw const FormatException('Invalid roster update receipt');
+    }
+    return data['changed'] as bool;
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
