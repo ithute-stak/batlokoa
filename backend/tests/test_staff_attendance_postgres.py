@@ -121,3 +121,27 @@ def test_expired_capture_creates_no_records(environment):
     with pytest.raises(AttendanceRejected, match="LOCATION_UNVERIFIED"):
         record(environment, captured_at=datetime.now(timezone.utc)-timedelta(minutes=5))
     assert counts(connect) == (0, 0)
+
+
+def test_session_reads_isolate_employee_and_company(environment):
+    store, _, staff, branch, position = environment
+    first, _, _ = record(environment)
+    assert store.read_sessions(staff, open_only=True)[0]["session_id"] == first
+    record(environment, AttendanceAction.CLOCK_OUT)
+    second, _, _ = record(environment)
+    coworker = VerifiedStaffIdentity(uuid4(), staff.company_id, "LOAN_OFFICER",
+                                     True, frozenset({branch.branch_id}))
+    other_company = VerifiedStaffIdentity(staff.user_id, uuid4(), "COMPANY_OWNER",
+                                          True, frozenset(), True)
+    third, _, _ = store.record(coworker, branch, position, AttendanceAction.CLOCK_IN,
+                               captured_at=datetime.now(timezone.utc))
+    assert store.read_sessions(other_company) == []
+    assert [row["session_id"] for row in store.read_sessions(coworker)] == [third]
+    own = store.read_sessions(staff)
+    assert [row["session_id"] for row in own] == [second, first]
+    assert own[0]["clocked_out_at"] is None
+    assert own[1]["clocked_out_at"] is not None
+    assert [row["session_id"] for row in store.read_sessions(staff, open_only=True)] == [second]
+    assert [row["session_id"] for row in store.read_sessions(staff, limit=1)] == [second]
+    assert [row["session_id"] for row in store.read_sessions(staff, before=second)] == [first]
+    assert store.read_sessions(staff, before=first) == []
