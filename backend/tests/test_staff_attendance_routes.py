@@ -120,3 +120,52 @@ def test_policy_errors(configured, monkeypatch, code, status):
     response = post(client)
     assert response.status_code == status
     assert response.json()["code"] == code
+
+
+@pytest.mark.parametrize("endpoint", ["status", "history"])
+def test_reads_disabled_or_unauthenticated(configured, monkeypatch, endpoint):
+    app, client, _, _ = configured
+    monkeypatch.setattr(app.state.staff_attendance_store, "read_sessions",
+                        lambda *a, **kw: pytest.fail("Unauthorized database read"))
+    app.state.staff_attendance_enabled = False
+    assert client.get(PATH + endpoint).status_code == 503
+    app.state.staff_attendance_enabled = True
+    client.cookies.clear()
+    assert client.get(PATH + endpoint).status_code == 401
+
+
+def test_status_empty_and_open(configured, monkeypatch):
+    app, client, _, _ = configured
+    rows = []
+    def read(identity, **kwargs):
+        assert identity == STAFF
+        assert kwargs == dict(open_only=True, limit=1, before=None)
+        return rows
+    monkeypatch.setattr(app.state.staff_attendance_store, "read_sessions", read)
+    assert client.get(PATH + "status").json() == {"clocked_in": False, "session": None}
+    rows.append({"session_id": 1, "branch_id": str(BRANCH),
+                 "clocked_in_at": "2026-11-26T05:00:00+00:00", "clocked_out_at": None})
+    response = client.get(PATH + "status")
+    assert response.json() == {"clocked_in": True, "session": rows[0]}
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_history_pagination_and_scope(configured, monkeypatch):
+    app, client, _, _ = configured
+    def read(identity, **kwargs):
+        assert identity == STAFF
+        assert kwargs == dict(open_only=False, limit=1, before=10)
+        return [{"session_id": 9}]
+    monkeypatch.setattr(app.state.staff_attendance_store, "read_sessions", read)
+    response = client.get(PATH + "history", params={"limit": 1, "before": 10,
+                         "employee_id": str(uuid4()), "company_id": str(uuid4())})
+    assert response.status_code == 200
+    assert response.json() == {"sessions": [{"session_id": 9}], "next_before": 9}
+
+
+@pytest.mark.parametrize("query", ["limit=0", "limit=101", "before=0", "before=9223372036854775808"])
+def test_history_invalid_pagination(configured, monkeypatch, query):
+    app, client, _, _ = configured
+    monkeypatch.setattr(app.state.staff_attendance_store, "read_sessions",
+                        lambda *a, **kw: pytest.fail("Invalid pagination reached storage"))
+    assert client.get(PATH + "history?" + query).status_code == 422
