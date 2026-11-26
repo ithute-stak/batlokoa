@@ -1,6 +1,6 @@
 """Opt-in attendance API; disabled unless explicitly configured."""
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 import httpx
@@ -14,7 +14,8 @@ from .owner_staff_management_routes import fail, owner_context, call_loanhub
 from .owner_attendance_inbox import OwnerAttendanceInbox
 from .staff_registration_read_origin import safe_staff_read_origin
 from .staff_login_routes import COOKIE, CSRF_COOKIE, NO_STORE, _config, _same_origin
-from .staff_authorization import StaffAccessDenied
+from .staff_authorization import StaffAccessDenied, VerifiedStaffIdentity
+from .staff_morning_work_roster_store import MorningWorkRosterStore
 from .staff_attendance import AttendanceAction, AttendanceRejected
 from .staff_attendance_store import AttendanceStore
 from .staff_attendance_monitor_store import AttendanceMonitorStore
@@ -334,3 +335,98 @@ def owner_attendance_access_events(request: Request,
                 event["employee_name"] = None
                 event["branch_name"] = None
     return JSONResponse(result, headers=NO_STORE)
+
+
+class WorkRosterDraft(BaseModel):
+    employee_id: UUID
+    work_date: date
+    scheduled_to_work: bool = Field(strict=True)
+    model_config = {"extra": "forbid"}
+
+
+def _roster_context(request, *, write=False):
+    cfg = _config(request)
+    store = getattr(request.app.state, "staff_morning_work_roster_store", None)
+    if (cfg is None or not isinstance(store, MorningWorkRosterStore)
+            or getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "owner_work_roster_enabled", False) is not True):
+        return None, None, None, fail("WORK_ROSTER_DISABLED", 503)
+    origin_ok = (_same_origin(request, cfg.public_origin) if write
+                 else safe_staff_read_origin(request, cfg.public_origin))
+    if not origin_ok:
+        return None, None, None, fail("FORBIDDEN_ORIGIN", 403)
+    record, staff, denial = owner_context(request, require_verified=True)
+    if denial is not None:
+        return None, None, None, denial
+    if write:
+        csrf = request.headers.get("x-csrf-token", "")
+        if (not csrf or not csrf.isascii()
+                or request.cookies.get(CSRF_COOKIE) != csrf
+                or not secrets.compare_digest(csrf, record.csrf_token)):
+            return None, None, None, fail("CSRF_REJECTED", 403)
+    return store, record, staff, None
+
+
+@router.get("/api/v1/staff/manage/attendance/work-roster", include_in_schema=False)
+def owner_work_roster(request: Request, work_date: date,
+                      after: UUID | None = Query(None),
+                      limit: int = Query(50, ge=1, le=100)):
+    store, _, staff, denial = _roster_context(request)
+    if denial is not None:
+        return denial
+    try:
+        result = store.read_day(staff, work_date=work_date, after=after, limit=limit)
+    except StaffAccessDenied:
+        return fail("OWNER_ONLY", 403)
+    except (psycopg.Error, ValueError):
+        return fail("WORK_ROSTER_UNAVAILABLE", 503)
+    return JSONResponse(result, headers=NO_STORE)
+
+
+@router.post("/api/v1/staff/manage/attendance/work-roster", include_in_schema=False)
+def owner_set_work_roster(payload: WorkRosterDraft, request: Request):
+    store, record, staff, denial = _roster_context(request, write=True)
+    if denial is not None:
+        return denial
+    try:
+        response = call_loanhub(request, method="GET",
+            path="/api/v1/company-staff/?limit=100", token=record.access_token,
+            company_id=staff.company_id)
+        if (response.status_code != 200 or len(response.content)>262144
+                or "application/json" not in response.headers.get("content-type", "").lower()):
+            return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+        rows = response.json()
+        if not isinstance(rows, list) or len(rows)>100:
+            return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+        matches = []
+        for row in rows:
+            if UUID(str(row["company_id"])) != staff.company_id:
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            user = row["user"]
+            user_id = UUID(str(user["id"]))
+            if row.get("user_id") is not None and UUID(str(row["user_id"])) != user_id:
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            if user_id == payload.employee_id:
+                matches.append(row)
+        if len(matches) != 1:
+            return fail("EMPLOYEE_NOT_VERIFIED", 403)
+        member = matches[0]
+        if member.get("is_active") is not True:
+            return fail("EMPLOYEE_NOT_VERIFIED", 403)
+        # Only the target's verified membership fields are needed by the store.
+        employee = VerifiedStaffIdentity(payload.employee_id, staff.company_id,
+            str(member["role"]).upper(), True, frozenset())
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+    try:
+        changed = store.set_day(staff, employee, work_date=payload.work_date,
+                                scheduled_to_work=payload.scheduled_to_work)
+    except StaffAccessDenied:
+        return fail("EMPLOYEE_NOT_VERIFIED", 403)
+    except ValueError:
+        return fail("INVALID_WORK_ROSTER_DATE", 422)
+    except psycopg.Error:
+        return fail("WORK_ROSTER_UNAVAILABLE", 503)
+    return JSONResponse({"changed": changed, "employee_id": str(employee.user_id),
+                         "work_date": payload.work_date.isoformat(),
+                         "scheduled_to_work": payload.scheduled_to_work}, headers=NO_STORE)
