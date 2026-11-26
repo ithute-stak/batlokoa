@@ -8,6 +8,7 @@ import 'staff_client_directory_screen.dart';
 import 'staff_client_registration_screen.dart';
 import 'owner_staff_management_screen.dart';
 import 'staff_attendance_screen.dart';
+import 'staff_monitoring_scheduler.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
 class StaffWorkspaceShell extends StatefulWidget {
@@ -23,8 +24,115 @@ class StaffWorkspaceShell extends StatefulWidget {
   State<StaffWorkspaceShell> createState() => _StaffWorkspaceShellState();
 }
 
-class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
+class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsBindingObserver {
   int tab = 0;
+  // Separately released only after the monitoring API and employee notice
+  // have been approved. A gateway implementation alone is not activation.
+  static const _monitorReleased = bool.fromEnvironment('STAFF_MONITORING_ENABLED');
+  StaffMonitoringScheduler? _monitor;
+  StaffMonitorReceipt? _lastReading;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+    _configureMonitor();
+  }
+
+  void _configureMonitor() {
+    final gateway = widget.gateway;
+    if (_monitorReleased && gateway is StaffAttendanceGateway &&
+        gateway is StaffMonitoringGateway) {
+      _monitor = StaffMonitoringScheduler(
+        attendance: gateway as StaffAttendanceGateway,
+        monitoring: gateway as StaffMonitoringGateway,
+        onReading: (reading) {
+          if (mounted) setState(() => _lastReading = reading);
+        },
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant StaffWorkspaceShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.gateway, widget.gateway) ||
+        !identical(oldWidget.session, widget.session)) {
+      _monitor?.stop();
+      _monitor = null;
+      _lastReading = null;
+      _configureMonitor();
+    }
+    if (widget.busy) {
+      _monitor?.stop();
+      _lastReading = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    setState(() {
+      _foreground = state == AppLifecycleState.resumed;
+      if (!_foreground) {
+        _monitor?.stop();
+        _lastReading = null;
+      }
+    });
+  }
+
+  Future<void> _signOut() async {
+    setState(() {
+      _monitor?.stop();
+      _lastReading = null;
+    });
+    await widget.onLogout();
+  }
+
+  @override
+  void dispose() {
+    _monitor?.stop();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Widget monitoringPanel() {
+    final monitor = _monitor!;
+    final reading = _lastReading;
+    final status = !monitor.enabled ? 'Monitoring paused'
+        : reading == null ? 'Location not currently verified'
+        : reading.reading == StaffPerimeterReading.unverified
+            ? 'Location uncertain'
+        : reading.reading == StaffPerimeterReading.inside
+            ? 'Location reported inside'
+        : 'Location reported outside';
+    return Card(child: Column(children: [
+      SwitchListTile(
+        key: const Key('staff-monitoring-switch'),
+        title: const Text('Working-session location monitoring'),
+        subtitle: const Text('When enabled, the app checks your office perimeter '
+            'every 30 seconds during active attendance. Confirmed transitions '
+            'may be reported to management. Monitoring pauses when the app '
+            'loses foreground access.'),
+        value: monitor.enabled,
+        onChanged: !_foreground || widget.busy ? null : (enabled) {
+          setState(() {
+            _lastReading = null;
+            if (enabled) {
+              monitor.start();
+            } else {
+              monitor.stop();
+            }
+          });
+        },
+      ),
+      Padding(padding: const EdgeInsets.all(12),
+        child: Semantics(liveRegion: true, child: Text(status))),
+    ]));
+  }
   bool get owner => widget.session.role == 'COMPANY_OWNER'
       && widget.session.companyWide;
   bool get canManage => owner && widget.gateway is OwnerStaffManagementGateway;
@@ -148,6 +256,10 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
           ])),
       ]),
     ),
+    if (_monitor != null) ...[
+      const SizedBox(height: 16),
+      monitoringPanel(),
+    ],
     const SizedBox(height: 27),
     Row(children: [
       const Expanded(child: Text('Quick actions', style: TextStyle(
@@ -266,7 +378,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
     ])),
     const SizedBox(height: 24),
     SizedBox(height: 52, child: FilledButton.icon(
-      onPressed: widget.busy ? null : widget.onLogout,
+      onPressed: widget.busy ? null : _signOut,
       icon: const Icon(Icons.logout_rounded),
       label: const Text('Sign out securely'))),
   ]);
@@ -312,7 +424,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
         ]),
         actions: [IconButton(
           key: const Key('staff-logout'), tooltip: 'Sign out',
-          onPressed: widget.busy ? null : widget.onLogout,
+          onPressed: widget.busy ? null : _signOut,
           icon: const Icon(Icons.logout_outlined))],
       ),
       body: SafeArea(child: Row(children: [
