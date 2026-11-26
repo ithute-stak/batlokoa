@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from urllib.parse import urlsplit
+from uuid import UUID, uuid4
+
+import psycopg
 
 import httpx
 import jwt
@@ -20,13 +23,28 @@ from pydantic import BaseModel, Field
 
 from .loanhub_staff_verifier import LoanHubStaffVerifier, StaffVerificationUnavailable
 
+from .staff_attendance_access_store import AttendanceAccessStore
+from .staff_authorization import StaffAccessDenied
+from .staff_branch_location import ActiveBranch
+from .staff_geofence import Position, LocationState
+
 router = APIRouter()
 COOKIE = "__Host-batlokoa_staff_session"
 CSRF_COOKIE = "__Host-batlokoa_staff_csrf"
 NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
+class LoginLocation(BaseModel):
+    branch_id: UUID
+    latitude: float = Field(ge=-90, le=90, allow_inf_nan=False, strict=True)
+    longitude: float = Field(ge=-180, le=180, allow_inf_nan=False, strict=True)
+    accuracy_m: float = Field(gt=0, allow_inf_nan=False, strict=True)
+    captured_at: datetime
+    model_config = {"extra": "forbid"}
+
+
 class EmployeeLogin(BaseModel):
+    location: LoginLocation | None = None
     phone: str = Field(min_length=8, max_length=30)
     password: str = Field(min_length=6, max_length=128)
     otp: str | None = Field(default=None, min_length=6, max_length=8, pattern=r"^[0-9]{6,8}$")
@@ -123,6 +141,65 @@ def _same_origin(request: Request, origin: str) -> bool:
     return request.headers.get("origin") == origin.rstrip("/")
 
 
+def _login_location(request, cfg, token, location):
+    """Observe only after successful authentication; never claim missing GPS is outside."""
+    store = getattr(request.app.state, "staff_attendance_access_store", None)
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "staff_login_location_enabled", False) is not True):
+        return None
+    if not isinstance(store, AttendanceAccessStore) or location is None:
+        return LocationState.UNVERIFIED.value
+    try:
+        base = cfg.verifier
+        identity = LoanHubStaffVerifier(
+            origin=cfg.loanhub_origin, public_key=base._public_key,
+            batlokoa_company_id=base._company_id, client=base._client,
+            allow_unverified_company_owner=False,
+        ).verify(token)
+        if not (location.branch_id in identity.branch_ids or
+                (identity.company_wide_scope is True and
+                 identity.role in {"COMPANY_OWNER", "COMPANY_ADMIN"})):
+            return LocationState.UNVERIFIED.value
+        def read(client):
+            return client.get(cfg.loanhub_origin.rstrip("/") + "/api/v1/branches/?limit=100",
+                headers={"Authorization": "Bearer " + token,
+                         "X-Company-ID": str(identity.company_id),
+                         "X-Active-Role": identity.role.lower(),
+                         "Accept": "application/json", "Cache-Control": "no-store"},
+                timeout=8, follow_redirects=False)
+        if cfg.client is None:
+            with httpx.Client(trust_env=False, follow_redirects=False) as client:
+                response = read(client)
+        else:
+            response = read(cfg.client)
+        if (response.status_code != 200 or len(response.content) > 131072
+                or "application/json" not in response.headers.get("content-type", "").lower()):
+            return LocationState.UNVERIFIED.value
+        rows = response.json()
+        if not isinstance(rows, list) or len(rows) > 100:
+            return LocationState.UNVERIFIED.value
+        seen, active = set(), set()
+        for row in rows:
+            if UUID(str(row["company_id"])) != identity.company_id:
+                return LocationState.UNVERIFIED.value
+            identifier = UUID(str(row["id"]))
+            if identifier in seen:
+                return LocationState.UNVERIFIED.value
+            seen.add(identifier)
+            if row.get("is_active") is True:
+                active.add(identifier)
+        if location.branch_id not in active:
+            return LocationState.UNVERIFIED.value
+        reading, _ = store.record_login(identity, uuid4(),
+            ActiveBranch(identity.company_id, location.branch_id, True),
+            Position(location.latitude, location.longitude, location.accuracy_m),
+            captured_at=location.captured_at)
+        return reading.value
+    except (StaffVerificationUnavailable, StaffAccessDenied, psycopg.Error,
+            httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return LocationState.UNVERIFIED.value
+
+
 @router.post("/api/v1/staff/login", include_in_schema=False)
 def staff_login(payload: EmployeeLogin, request: Request):
     cfg = _config(request)
@@ -164,8 +241,14 @@ def staff_login(payload: EmployeeLogin, request: Request):
         if remaining <= 0:
             return _response("LOGIN_FAILED", 401)
         ttl = min(remaining, 600)
+        location_state = _login_location(request, cfg, token, payload.location)
+        remaining = int(exp - datetime.now(timezone.utc).timestamp())
+        if remaining <= 0:
+            return _response("LOGIN_FAILED", 401)
+        ttl = min(remaining, 600)
         session, csrf = cfg.store.issue(token, ttl)
         response = JSONResponse({
+            **({"login_location": location_state} if location_state is not None else {}),
             "authenticated": True,
             "role": identity.role,
             "company_id": str(identity.company_id),
