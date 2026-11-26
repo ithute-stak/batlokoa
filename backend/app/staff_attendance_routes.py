@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .loanhub_staff_verifier import LoanHubStaffVerifier, StaffVerificationUnavailable
-from .owner_staff_management_routes import fail, owner_context
+from .owner_staff_management_routes import fail, owner_context, call_loanhub
 from .owner_attendance_inbox import OwnerAttendanceInbox
 from .staff_registration_read_origin import safe_staff_read_origin
 from .staff_login_routes import COOKIE, CSRF_COOKIE, NO_STORE, _config, _same_origin
@@ -222,6 +222,42 @@ def monitor_attendance(payload: MonitorCapture, request: Request):
     }, headers=NO_STORE)
 
 
+def _owner_alert_labels(request, staff, token):
+    def directory(path, max_bytes):
+        response = call_loanhub(request, method="GET", path=path,
+                                token=token, company_id=staff.company_id)
+        if (response.status_code != 200 or len(response.content) > max_bytes
+                or "application/json" not in response.headers.get("content-type", "").lower()):
+            raise ValueError("Directory unavailable")
+        rows = response.json()
+        if not isinstance(rows, list) or len(rows) > 100:
+            raise ValueError("Invalid directory")
+        for row in rows:
+            if UUID(str(row["company_id"])) != staff.company_id:
+                raise ValueError("Directory scope mismatch")
+        return rows
+
+    employees, branches = {}, {}
+    for item in directory("/api/v1/company-staff/?limit=100", 262144):
+        user = item["user"]
+        identifier = UUID(str(user["id"]))
+        if item.get("user_id") is not None and UUID(str(item["user_id"])) != identifier:
+            raise ValueError("User mismatch")
+        if identifier in employees:
+            raise ValueError("Ambiguous user")
+        person = user.get("person") or {}
+        first, last = person.get("first_name"), person.get("last_name")
+        if any(value is not None and not isinstance(value, str) for value in (first, last)):
+            raise ValueError("Invalid name")
+        employees[identifier] = ((first or "") + " " + (last or "")).strip()[:200] or None
+    for item in directory("/api/v1/branches/?limit=100", 131072):
+        identifier = UUID(str(item["id"]))
+        if identifier in branches or not isinstance(item["name"], str):
+            raise ValueError("Invalid branch")
+        branches[identifier] = item["name"].strip()[:120] or None
+    return employees, branches
+
+
 @router.get("/api/v1/staff/manage/attendance/alerts", include_in_schema=False)
 def owner_attendance_alerts(request: Request,
                             after: int = Query(0, ge=0, le=9223372036854775807),
@@ -234,7 +270,7 @@ def owner_attendance_alerts(request: Request,
         return fail("OWNER_INBOX_DISABLED", 503)
     if not safe_staff_read_origin(request, cfg.public_origin):
         return fail("FORBIDDEN_ORIGIN", 403)
-    _, staff, denial = owner_context(request, require_verified=True)
+    record, staff, denial = owner_context(request, require_verified=True)
     if denial is not None:
         return denial
     try:
@@ -243,4 +279,17 @@ def owner_attendance_alerts(request: Request,
         return fail("OWNER_ONLY", 403)
     except (psycopg.Error, ValueError):
         return fail("OWNER_INBOX_UNAVAILABLE", 503)
+    if result["alerts"]:
+        # Attendance employee IDs are user UUIDs, NOT membership UUIDs.
+        # Enrich only this authorized page with current directory labels.
+        try:
+            employees, branches = _owner_alert_labels(request, staff, record.access_token)
+            for alert in result["alerts"]:
+                alert["employee_name"] = employees.get(UUID(alert["employee_id"]))
+                alert["branch_name"] = branches.get(UUID(alert["branch_id"]))
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+            # Never guess a name or use a partly validated directory.
+            for alert in result["alerts"]:
+                alert["employee_name"] = None
+                alert["branch_name"] = None
     return JSONResponse(result, headers=NO_STORE)
