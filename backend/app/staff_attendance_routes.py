@@ -293,3 +293,44 @@ def owner_attendance_alerts(request: Request,
                 alert["employee_name"] = None
                 alert["branch_name"] = None
     return JSONResponse(result, headers=NO_STORE)
+
+
+@router.get("/api/v1/staff/manage/attendance/access-events", include_in_schema=False)
+def owner_attendance_access_events(request: Request,
+                                   before_at: datetime | None = Query(None),
+                                   before_id: UUID | None = Query(None),
+                                   limit: int = Query(50, ge=1, le=100)):
+    cfg = _config(request)
+    inbox = getattr(request.app.state, "owner_attendance_inbox", None)
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "owner_attendance_inbox_enabled", False) is not True
+            or getattr(request.app.state, "owner_access_inbox_enabled", False) is not True
+            or not isinstance(inbox, OwnerAttendanceInbox) or cfg is None):
+        return fail("OWNER_ACCESS_INBOX_DISABLED", 503)
+    if not safe_staff_read_origin(request, cfg.public_origin):
+        return fail("FORBIDDEN_ORIGIN", 403)
+    record, staff, denial = owner_context(request, require_verified=True)
+    if denial is not None:
+        return denial
+    if ((before_at is None) != (before_id is None)
+            or (before_at is not None and before_at.utcoffset() is None)):
+        return fail("INVALID_ACCESS_CURSOR", 422)
+    try:
+        result = inbox.read_access_events(staff, before_at=before_at,
+                                          before_id=before_id, limit=limit)
+    except StaffAccessDenied:
+        return fail("OWNER_ONLY", 403)
+    except (psycopg.Error, ValueError):
+        return fail("OWNER_INBOX_UNAVAILABLE", 503)
+    if result["events"]:
+        try:
+            employees, branches = _owner_alert_labels(request, staff, record.access_token)
+            for event in result["events"]:
+                event["employee_name"] = employees.get(UUID(event["employee_id"]))
+                event["branch_name"] = (branches.get(UUID(event["branch_id"]))
+                                        if event["branch_id"] is not None else None)
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+            for event in result["events"]:
+                event["employee_name"] = None
+                event["branch_name"] = None
+    return JSONResponse(result, headers=NO_STORE)
