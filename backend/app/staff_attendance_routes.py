@@ -10,7 +10,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .loanhub_staff_verifier import LoanHubStaffVerifier, StaffVerificationUnavailable
-from .owner_staff_management_routes import fail
+from .owner_staff_management_routes import fail, owner_context
+from .owner_attendance_inbox import OwnerAttendanceInbox
+from .staff_registration_read_origin import safe_staff_read_origin
 from .staff_login_routes import COOKIE, CSRF_COOKIE, NO_STORE, _config, _same_origin
 from .staff_authorization import StaffAccessDenied
 from .staff_attendance import AttendanceAction, AttendanceRejected
@@ -218,3 +220,27 @@ def monitor_attendance(payload: MonitorCapture, request: Request):
         "observed_at": state.last_observed_at.isoformat(),
         "transition_recorded": alert is not None,
     }, headers=NO_STORE)
+
+
+@router.get("/api/v1/staff/manage/attendance/alerts", include_in_schema=False)
+def owner_attendance_alerts(request: Request,
+                            after: int = Query(0, ge=0, le=9223372036854775807),
+                            limit: int = Query(50, ge=1, le=100)):
+    cfg = _config(request)
+    inbox = getattr(request.app.state, "owner_attendance_inbox", None)
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "owner_attendance_inbox_enabled", False) is not True
+            or not isinstance(inbox, OwnerAttendanceInbox) or cfg is None):
+        return fail("OWNER_INBOX_DISABLED", 503)
+    if not safe_staff_read_origin(request, cfg.public_origin):
+        return fail("FORBIDDEN_ORIGIN", 403)
+    _, staff, denial = owner_context(request, require_verified=True)
+    if denial is not None:
+        return denial
+    try:
+        result = inbox.read(staff, after=after, limit=limit)
+    except StaffAccessDenied:
+        return fail("OWNER_ONLY", 403)
+    except (psycopg.Error, ValueError):
+        return fail("OWNER_INBOX_UNAVAILABLE", 503)
+    return JSONResponse(result, headers=NO_STORE)
