@@ -45,7 +45,11 @@ def configured(monkeypatch):
 
     monkeypatch.setattr(routes, "LoanHubStaffVerifier", verifier)
 
+    original_get = httpx.Client.get
+
     def get(self, url, **kwargs):
+        if str(url) != cfg.loanhub_origin + "/api/v1/branches/?limit=100":
+            return original_get(self, url, **kwargs)
         upstream.append(kwargs)
         return httpx.Response(200, json=[
             {"company_id": str(COMPANY), "id": str(BRANCH), "is_active": True}
