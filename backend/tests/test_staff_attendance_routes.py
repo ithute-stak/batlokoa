@@ -442,3 +442,113 @@ def test_access_inbox_directory_failure_omits_names(access_inbox, monkeypatch):
     assert response.status_code == 200
     event = response.json()["events"][0]
     assert event["employee_name"] is None and event["branch_name"] is None
+
+
+OWNER_ROSTER = "/api/v1/staff/manage/attendance/work-roster"
+
+
+@pytest.fixture
+def roster_api(owner_inbox, monkeypatch):
+    from backend.app.staff_morning_work_roster_store import MorningWorkRosterStore
+    app, client, owner, identity, _ = owner_inbox
+    store = MorningWorkRosterStore(lambda: pytest.fail("Unexpected database access"))
+    app.state.staff_morning_work_roster_store = store
+    app.state.owner_work_roster_enabled = True
+    calls, upstream = [], []
+    rows = [{"id": str(uuid4()), "company_id": str(COMPANY),
+             "user": {"id": str(STAFF.user_id)}, "role": "loan_officer",
+             "is_active": True}]
+    def directory(request, **kwargs):
+        upstream.append(kwargs)
+        return httpx.Response(200, json=rows)
+    def save(actor, employee, **kwargs):
+        calls.append((actor, employee, kwargs))
+        return True
+    def read(actor, **kwargs):
+        calls.append((actor, kwargs))
+        return {"rows": [], "next_after": None}
+    monkeypatch.setattr(routes, "call_loanhub", directory)
+    monkeypatch.setattr(store, "set_day", save)
+    monkeypatch.setattr(store, "read_day", read)
+    return app, client, owner, identity, calls, upstream, rows
+
+
+def roster_post(client, *, origin=ORIGIN, csrf="test-csrf", **changes):
+    body = {"employee_id": str(STAFF.user_id), "work_date": "2026-11-26",
+            "scheduled_to_work": True} | changes
+    return client.post(OWNER_ROSTER, json=body,
+                       headers={"Origin": origin, "x-csrf-token": csrf})
+
+
+def test_roster_write_verified_user_not_membership_id(roster_api):
+    from datetime import date
+    _, client, owner, _, calls, upstream, _ = roster_api
+    response = roster_post(client, scheduled_to_work=False)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["scheduled_to_work"] is False
+    actor, employee, kwargs = calls[0]
+    assert actor == owner
+    assert employee.user_id == STAFF.user_id and employee.company_id == COMPANY
+    assert kwargs == {"work_date": date(2026, 11, 26), "scheduled_to_work": False}
+    assert upstream[0]["company_id"] == COMPANY
+    assert upstream[0]["token"] == "test-token"
+
+
+def test_roster_read_scope(roster_api):
+    from datetime import date
+    _, client, owner, _, calls, upstream, _ = roster_api
+    response = client.get(OWNER_ROSTER, params={"work_date": "2026-11-26",
+        "company_id": str(uuid4()), "limit": 3})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert calls == [(owner, {"work_date": date(2026, 11, 26), "after": None, "limit": 3})]
+    assert not upstream
+
+
+def test_roster_release_and_authorization_gates(roster_api):
+    app, client, owner, identity, calls, upstream, _ = roster_api
+    app.state.owner_work_roster_enabled = False
+    assert roster_post(client).status_code == 503
+    app.state.owner_work_roster_enabled = True
+    app.state.staff_attendance_enabled = False
+    assert roster_post(client).status_code == 503
+    app.state.staff_attendance_enabled = True
+    assert roster_post(client, origin="https://foreign.test").status_code == 403
+    assert roster_post(client, csrf="wrong").status_code == 403
+    assert client.get(OWNER_ROSTER, params={"work_date": "2026-11-26"},
+        headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    identity[0] = STAFF
+    assert roster_post(client).status_code == 403
+    identity[0] = owner
+    client.cookies.clear()
+    assert roster_post(client).status_code == 401
+    assert not calls and not upstream
+
+
+@pytest.mark.parametrize("change,status", [
+    ("foreign", 503), ("inactive", 403), ("duplicate", 403),
+    ("mismatched_user", 503), ("missing", 403),
+])
+def test_roster_invalid_directory_never_writes(roster_api, change, status):
+    _, client, _, _, calls, upstream, rows = roster_api
+    if change == "foreign":
+        rows[0]["company_id"] = str(uuid4())
+    elif change == "inactive":
+        rows[0]["is_active"] = False
+    elif change == "duplicate":
+        rows.append(dict(rows[0]))
+    elif change == "mismatched_user":
+        rows[0]["user_id"] = str(uuid4())
+    else:
+        rows.clear()
+    assert roster_post(client).status_code == status
+    assert not calls and len(upstream) == 1
+
+
+def test_roster_rejects_untrusted_body_fields(roster_api):
+    _, client, _, _, calls, upstream, _ = roster_api
+    assert roster_post(client, company_id=str(uuid4())).status_code == 422
+    assert roster_post(client, scheduled_to_work="true").status_code == 422
+    assert roster_post(client, work_date="invalid").status_code == 422
+    assert not calls and not upstream
