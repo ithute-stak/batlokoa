@@ -12,6 +12,9 @@ import pytest
 
 from backend.app.staff_attendance import AttendanceAction, AttendanceRejected
 from backend.app.staff_attendance_store import AttendanceStore
+from backend.app.staff_attendance_monitor_store import AttendanceMonitorStore
+from backend.app.staff_attendance_monitor import MonitorAlert
+from backend.app.staff_geofence import LocationState
 from backend.app.staff_authorization import VerifiedStaffIdentity
 from backend.app.staff_branch_location import ActiveBranch
 from backend.app.staff_branch_location_store import BranchLocationStore
@@ -31,7 +34,8 @@ def environment():
                 # Set search_path at connection startup, before any transaction.
                 return psycopg.connect(URL, options=f"-c search_path={schema} -c statement_timeout=10000")
             with connect() as conn:
-                for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql"):
+                for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql",
+                             "staff_attendance_monitor_schema.sql"):
                     conn.execute(Path("backend/app", name).read_text())
             company, branch_id = uuid4(), uuid4()
             branch = ActiveBranch(company, branch_id, True)
@@ -145,3 +149,62 @@ def test_session_reads_isolate_employee_and_company(environment):
     assert [row["session_id"] for row in store.read_sessions(staff, limit=1)] == [second]
     assert [row["session_id"] for row in store.read_sessions(staff, before=second)] == [first]
     assert store.read_sessions(staff, before=first) == []
+
+
+def test_monitor_scope_replay_and_closed_session(environment):
+    _, connect, staff, branch, position = environment
+    session, _, _ = record(environment)
+    monitor = AttendanceMonitorStore(connect)
+    captured = datetime.now(timezone.utc)
+    reading, state, alert = monitor.record(staff, branch, session, position,
+                                             captured_at=captured)
+    assert reading is LocationState.INSIDE and alert is None
+    with pytest.raises(AttendanceRejected, match="LOCATION_REPLAYED"):
+        monitor.record(staff, branch, session, position, captured_at=captured)
+    coworker = VerifiedStaffIdentity(uuid4(), staff.company_id, "LOAN_OFFICER",
+                                     True, frozenset({branch.branch_id}))
+    with pytest.raises(AttendanceRejected, match="NO_ACTIVE_SESSION"):
+        monitor.record(coworker, branch, session, position,
+                       captured_at=datetime.now(timezone.utc))
+    record(environment, AttendanceAction.CLOCK_OUT)
+    with pytest.raises(AttendanceRejected, match="NO_ACTIVE_SESSION"):
+        monitor.record(staff, branch, session, position,
+                       captured_at=datetime.now(timezone.utc))
+    with connect() as conn:
+        assert conn.execute("SELECT count(*) FROM staff_attendance_monitor_outbox").fetchone()[0] == 0
+
+
+def test_monitor_atomic_alert_and_restart(environment, monkeypatch):
+    from backend.app import staff_attendance_monitor_store as module
+    _, connect, staff, branch, position = environment
+    session, _, _ = record(environment)
+    start = datetime.now(timezone.utc)
+    class Clock(datetime):
+        current = start
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+    monkeypatch.setattr(module, "datetime", Clock)
+    outside = Position(position.latitude + 0.001, position.longitude, 2)
+    def sample(seconds):
+        Clock.current = start + timedelta(seconds=seconds)
+        stamp = Clock.fromtimestamp(Clock.current.timestamp(), timezone.utc)
+        return AttendanceMonitorStore(connect).record(staff, branch, session, outside,
+                                                       captured_at=stamp)
+    assert sample(0)[2] is None
+    with connect() as conn:
+        conn.execute("""ALTER TABLE staff_attendance_monitor_outbox
+                        ADD CONSTRAINT test_block_exit CHECK (event_type <> 'reported_outside_perimeter')""")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        sample(30)
+    with connect() as conn:
+        assert conn.execute("""SELECT last_confirmed, transition_sequence
+            FROM staff_attendance_monitor_state""").fetchone() == ("verified_inside", 0)
+        assert conn.execute("SELECT count(*) FROM staff_attendance_monitor_outbox").fetchone()[0] == 0
+        conn.execute("ALTER TABLE staff_attendance_monitor_outbox DROP CONSTRAINT test_block_exit")
+    assert sample(31)[2] is MonitorAlert.EXIT
+    assert sample(60)[2] is None
+    with connect() as conn:
+        assert conn.execute("""SELECT last_confirmed, transition_sequence
+            FROM staff_attendance_monitor_state""").fetchone() == ("verified_outside", 1)
+        assert conn.execute("SELECT count(*) FROM staff_attendance_monitor_outbox").fetchone()[0] == 1
