@@ -7,6 +7,7 @@ import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'staff_client_registration_screen.dart';
 import 'owner_staff_management_screen.dart';
+import 'staff_attendance_screen.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
 class StaffWorkspaceShell extends StatefulWidget {
@@ -29,6 +30,38 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
   bool get canManage => owner && widget.gateway is OwnerStaffManagementGateway;
   void open(Widget screen) => Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => screen));
+
+  bool _openingAttendance = false;
+  bool get canAttend => widget.gateway is StaffAttendanceGateway &&
+      widget.gateway is StaffRegistrationBranchGateway;
+
+  Future<void> openAttendance() async {
+    if (!canAttend || _openingAttendance || widget.busy) return;
+    setState(() => _openingAttendance = true);
+    try {
+      final rows = await (widget.gateway as StaffRegistrationBranchGateway)
+          .registrationBranches();
+      if (!mounted) return;
+      final branches = <String, String>{
+        for (final row in rows) row['id']!: row['name']!,
+      };
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => StaffAttendanceScreen(
+          staff: widget.session,
+          gateway: widget.gateway as StaffAttendanceGateway,
+          branches: branches,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Attendance branch directory unavailable. Please retry.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _openingAttendance = false);
+    }
+  }
 
   void openClients() => open(StaffClientDirectoryScreen(
     gateway: widget.gateway, staff: widget.session));
@@ -125,6 +158,11 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
     ]),
     const SizedBox(height: 12),
     actionGrid([
+      if (canAttend)
+        KeyedSubtree(key: const Key('staff-open-attendance'),
+          child: BfsActionPanel(icon: Icons.access_time_rounded,
+            title: 'My attendance', description: 'Clock in, clock out and view history',
+            onPressed: openAttendance)),
       KeyedSubtree(key: const Key('staff-find-clients'),
         child: BfsActionPanel(icon: Icons.manage_search_rounded,
           title: 'Find clients', description: 'Search LoanHub records',
