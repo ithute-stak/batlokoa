@@ -22,7 +22,6 @@ class _StaffPortalState extends State<StaffPortal> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _secondFactor = TextEditingController();
-  final _loginBranch = TextEditingController();
   static const _locationReleased = bool.fromEnvironment('STAFF_LOGIN_LOCATION_ENABLED');
   bool _shareLoginLocation = false;
   bool get _canShareLocation => _locationReleased && widget.gateway is StaffLocationLoginGateway;
@@ -61,7 +60,6 @@ class _StaffPortalState extends State<StaffPortal> {
           ? enteredSecondFactor : null;
       final recoveryCode = enteredSecondFactor.isNotEmpty && _useRecoveryCode
           ? enteredSecondFactor : null;
-      final branch = _loginBranch.text.trim();
       StaffLocationCapture? capture;
       if (_canShareLocation && _shareLoginLocation) {
         try {
@@ -75,7 +73,7 @@ class _StaffPortalState extends State<StaffPortal> {
       if (!mounted) return;
       final session = capture != null && _canShareLocation
           ? await (widget.gateway as StaffLocationLoginGateway).loginWithLocation(
-              phone, password, branchId: branch, capture: capture,
+              phone, password, capture: capture,
               otp: otp, recoveryCode: recoveryCode)
           : widget.gateway is StaffSecondFactorGateway
               ? await (widget.gateway as StaffSecondFactorGateway).loginWithSecondFactor(
@@ -85,7 +83,6 @@ class _StaffPortalState extends State<StaffPortal> {
         setState(() => _session = session);
         _password.clear();
         _secondFactor.clear();
-        _loginBranch.clear();
         _shareLoginLocation = false;
       }
     } catch (_) {
@@ -116,7 +113,6 @@ class _StaffPortalState extends State<StaffPortal> {
     _phone.dispose();
     _password.dispose();
     _secondFactor.dispose();
-    _loginBranch.dispose();
     super.dispose();
   }
 
@@ -300,19 +296,6 @@ class _StaffPortalState extends State<StaffPortal> {
             value: _shareLoginLocation,
             onChanged: _busy ? null : (value) => setState(() => _shareLoginLocation = value),
           ),
-          if (_shareLoginLocation)
-            TextFormField(
-              key: const Key('staff-login-branch'),
-              controller: _loginBranch,
-              enabled: !_busy,
-              decoration: const InputDecoration(labelText: 'Assigned branch ID',
-                helperText: 'Use the branch ID supplied by your administrator.'),
-              validator: (value) {
-                if (!_shareLoginLocation) return null;
-                return RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
-                    .hasMatch(value?.trim() ?? '') ? null : 'Enter your assigned branch ID';
-              },
-            ),
         ],
         if (_error != null) ...[
           const SizedBox(height: 8),
