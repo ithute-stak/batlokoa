@@ -229,6 +229,37 @@ abstract class OwnerStaffManagementGateway {
   Future<String> createStaffAccount(Map<String, dynamic> draft);
 }
 
+class StaffAttendanceSession {
+  final int id;
+  final String branchId;
+  final DateTime clockedInAt;
+  final DateTime? clockedOutAt;
+  const StaffAttendanceSession(this.id, this.branchId, this.clockedInAt, this.clockedOutAt);
+
+  factory StaffAttendanceSession.fromJson(Map<String, dynamic> data) {
+    final id = data['session_id'];
+    final branch = data['branch_id'];
+    final start = data['clocked_in_at'];
+    final end = data['clocked_out_at'];
+    if (id is! int || id <= 0 || branch is! String || branch.isEmpty ||
+        start is! String || (end != null && end is! String)) {
+      throw const FormatException('Invalid attendance session');
+    }
+    final opened = DateTime.parse(start);
+    final closed = end == null ? null : DateTime.parse(end as String);
+    if (!opened.isUtc || (closed != null && (!closed.isUtc || closed.isBefore(opened)))) {
+      throw const FormatException('Invalid attendance time');
+    }
+    return StaffAttendanceSession(id, branch, opened, closed);
+  }
+}
+
+abstract class StaffAttendanceGateway {
+  Future<StaffAttendanceSession?> attendanceStatus();
+  Future<List<StaffAttendanceSession>> attendanceHistory({int limit = 30, int? before});
+  Future<void> recordAttendance(String branchId, StaffLocationCapture capture, {required bool clockIn});
+}
+
 abstract class StaffBranchLocationGateway {
   Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
 }
@@ -260,7 +291,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -582,6 +613,175 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Invalid registration receipt');
     }
     return data['revision_id'] as int;
+  }
+
+  Future<Map<String, dynamic>> _attendanceRead(String path, {Map<String, String>? query}) async {
+    final uri = _url(path).replace(queryParameters: query);
+    final response = await client.get(uri, headers: {
+      'Accept': 'application/json', 'Cache-Control': 'no-store',
+    });
+    if (response.statusCode != 200 || response.bodyBytes.length > 65536) {
+      throw StateError('Attendance information unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Invalid attendance response');
+    }
+    return data;
+  }
+
+  @override
+  Future<StaffAttendanceSession?> attendanceStatus() async {
+    final data = await _attendanceRead('/api/v1/staff/attendance/status');
+    final session = data['session'];
+    if (data['clocked_in'] == false && session == null) return null;
+    if (data['clocked_in'] != true || session is! Map<String, dynamic>) {
+      throw const FormatException('Invalid attendance status');
+    }
+    final row = StaffAttendanceSession.fromJson(session);
+    if (row.clockedOutAt != null) throw const FormatException('Session already closed');
+    return row;
+  }
+
+  @override
+  Future<List<StaffAttendanceSession>> attendanceHistory({int limit = 30, int? before}) async {
+    if (limit < 1 || limit > 100 || (before != null && before <= 0)) {
+      throw ArgumentError('Invalid attendance pagination');
+    }
+    final data = await _attendanceRead('/api/v1/staff/attendance/history',
+        query: {'limit': '$limit', if (before != null) 'before': '$before'});
+    final rows = data['sessions'];
+    if (rows is! List || rows.length > limit) {
+      throw const FormatException('Invalid attendance history');
+    }
+    final result = <StaffAttendanceSession>[];
+    int? previous = before;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid attendance row');
+      final item = StaffAttendanceSession.fromJson(row);
+      if (previous != null && item.id >= previous) {
+        throw const FormatException('Invalid attendance ordering');
+      }
+      previous = item.id;
+      result.add(item);
+    }
+    return List<StaffAttendanceSession>.unmodifiable(result);
+  }
+
+  @override
+  Future<void> recordAttendance(String branchId, StaffLocationCapture capture, {required bool clockIn}) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty || !capture.isUsableAt(DateTime.now()) ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+      String path, String key) async {
+    final response = await client.get(_url(path),
+      headers: {'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    if (response.statusCode != 200 || response.bodyBytes.length > 262144) {
+      throw StateError('Owner staff directory unavailable or access denied');
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic> || body[key] is! List) {
+      throw const FormatException('Invalid owner staff response');
+    }
+    final rows = body[key] as List;
+    if (rows.length > 100 || rows.any((row) => row is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid owner staff list');
+    }
+    return List<Map<String, dynamic>>.unmodifiable(
+      rows.cast<Map<String, dynamic>>());
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> ownerBranches() =>
+      _readOwnerList('/api/v1/staff/manage/branches', 'branches');
+
+  @override
+  Future<List<Map<String, dynamic>>> ownerStaff() =>
+      _readOwnerList('/api/v1/staff/manage/members', 'members');
+
+  @override
+  Future<String> createStaffAccount(Map<String, dynamic> draft) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure owner action requires CSRF proof');
+    }
+    final response = await client.post(_url('/api/v1/staff/manage/members'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      },
+      body: jsonEncode(draft),
+    );
+    if (response.statusCode == 503) {
+      throw StateError('Staff account creation is not yet released.');
+    }
+    if (response.statusCode == 409) {
+      throw StateError('Account already exists or the company staff limit is reached.');
+    }
+    if (response.statusCode != 201) {
+      throw StateError('Staff registration was denied or needs owner verification.');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> ||
+        data['created'] != true || data['staff_id'] is! String) {
+      throw const FormatException('Staff registration not confirmed');
+    }
+    return data['staff_id'] as String;
+  }
+
+  @override
+  Future<void> logout() async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) {
+      throw StateError('Secure employee sign-out requires CSRF proof');
+    }
+    final res = await client.post(_url('/api/v1/staff/logout'),
+        headers: {
+          'Accept': 'application/json',
+          'x-csrf-token': csrf,
+          if (!browserManagedOrigin) 'Origin': origin.toString(),
+        });
+    if (res.statusCode != 200) {
+      throw StateError('Employee sign-out failed');
+    }
+    final body = jsonDecode(res.body);
+    if (body is! Map<String, dynamic> || body['logged_out'] != true) {
+      throw StateError('Employee sign-out was not confirmed');
+    }
+  }
+}
+).hasMatch(branchId)) {
+      throw StateError('Fresh precise location and secure staff session required');
+    }
+    final endpoint = clockIn ? 'clock-in' : 'clock-out';
+    final request = http.Request('POST', _url('/api/v1/staff/attendance/$endpoint'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Content-Type': 'application/json', 'Accept': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      })
+      ..body = jsonEncode({
+        'branch_id': branchId, 'latitude': capture.latitude,
+        'longitude': capture.longitude, 'accuracy_m': capture.accuracyM,
+        'captured_at': capture.capturedAt.toUtc().toIso8601String(),
+      });
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.bodyBytes.length > 4096) throw StateError('Attendance not confirmed');
+    final data = jsonDecode(response.body);
+    if (response.statusCode != 201 || data is! Map<String, dynamic> ||
+        data['action'] != (clockIn ? 'clock_in' : 'clock_out') ||
+        data['branch_id'] != branchId ||
+        data['session_id'] is! int || (data['session_id'] as int) <= 0 ||
+        data['event_id'] is! int || (data['event_id'] as int) <= 0) {
+      if (data is Map && data['code'] == 'OUTSIDE_PERIMETER') {
+        throw StateError('You are outside the authorized office perimeter.');
+      }
+      throw StateError('Attendance was not confirmed. Refresh status before retrying.');
+    }
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
