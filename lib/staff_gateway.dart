@@ -120,6 +120,14 @@ abstract class StaffSecondFactorGateway {
   });
 }
 
+/// Optional location-aware login; the server still verifies branch membership.
+abstract class StaffLocationLoginGateway {
+  Future<StaffSession> loginWithLocation(String phone, String password, {
+    String? otp, String? recoveryCode,
+    required String branchId, required StaffLocationCapture capture,
+  });
+}
+
 /// Registration release state from LoanHub; never authorizes a write.
 class StaffRegistrationReadiness {
   final bool registrationAvailable;
@@ -333,7 +341,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -369,6 +377,29 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
     String password, {
     String? otp,
     String? recoveryCode,
+  }) => _login(phone, password, otp: otp, recoveryCode: recoveryCode);
+
+  @override
+  Future<StaffSession> loginWithLocation(String phone, String password, {
+    String? otp, String? recoveryCode,
+    required String branchId, required StaffLocationCapture capture,
+  }) {
+    if (!RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(branchId) ||
+        !capture.isUsableAt(DateTime.now())) {
+      throw StateError('Fresh location and valid branch required');
+    }
+    return _login(phone, password, otp: otp, recoveryCode: recoveryCode,
+      location: {
+        'branch_id': branchId,
+        'latitude': capture.latitude,
+        'longitude': capture.longitude,
+        'accuracy_m': capture.accuracyM,
+        'captured_at': capture.capturedAt.toUtc().toIso8601String(),
+      });
+  }
+
+  Future<StaffSession> _login(String phone, String password, {
+    String? otp, String? recoveryCode, Map<String, dynamic>? location,
   }) async {
     if (otp != null && recoveryCode != null) {
       throw ArgumentError('Select either an authenticator code or recovery code');
@@ -382,6 +413,7 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
           'password': password,
           if (otp != null) 'otp': otp,
           if (recoveryCode != null) 'recovery_code': recoveryCode,
+          if (location != null) 'location': location,
         }));
     if (res.statusCode != 200) throw StateError('Employee sign-in was denied');
     // Login response is not sufficient authorization: revalidate via session.
