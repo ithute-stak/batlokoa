@@ -277,6 +277,28 @@ abstract class StaffMonitoringGateway {
       StaffAttendanceSession session, StaffLocationCapture capture);
 }
 
+class OwnerAttendanceAlert {
+  final int id;
+  final int sessionId;
+  final String employeeId;
+  final String branchId;
+  final String eventType;
+  final DateTime observedAt;
+  const OwnerAttendanceAlert(this.id, this.sessionId, this.employeeId,
+      this.branchId, this.eventType, this.observedAt);
+}
+
+class OwnerAttendanceAlertPage {
+  final List<OwnerAttendanceAlert> alerts;
+  final int nextAfter;
+  final bool hasMore;
+  const OwnerAttendanceAlertPage(this.alerts, this.nextAfter, this.hasMore);
+}
+
+abstract class OwnerAttendanceInboxGateway {
+  Future<OwnerAttendanceAlertPage> attendanceAlerts({int after = 0, int limit = 50});
+}
+
 abstract class StaffBranchLocationGateway {
   Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
 }
@@ -308,7 +330,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -774,6 +796,57 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Inconsistent monitoring response');
     }
     return StaffMonitorReceipt(session.id, reading, confirmed, observed, transition);
+  }
+
+  @override
+  Future<OwnerAttendanceAlertPage> attendanceAlerts({int after = 0, int limit = 50}) async {
+    if (after < 0 || limit < 1 || limit > 100) {
+      throw ArgumentError('Invalid alert pagination');
+    }
+    final uri = _url('/api/v1/staff/manage/attendance/alerts').replace(
+        queryParameters: {'after': '$after', 'limit': '$limit'});
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 65536) {
+      throw StateError('Owner attendance inbox unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['alerts'] is! List ||
+        data['next_after'] is! int || data['has_more'] is! bool) {
+      throw const FormatException('Invalid alert page');
+    }
+    final rows = data['alerts'] as List;
+    if (rows.length > limit) throw const FormatException('Oversized alert page');
+    final alerts = <OwnerAttendanceAlert>[];
+    var previous = after;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid alert');
+      final id = row['alert_id'];
+      final session = row['session_id'];
+      final employee = row['employee_id'];
+      final branch = row['branch_id'];
+      final event = row['event_type'];
+      final observed = row['observed_at'];
+      if (id is! int || id <= previous || session is! int || session <= 0 ||
+          employee is! String || employee.isEmpty || employee.length > 36 ||
+          branch is! String || branch.isEmpty || branch.length > 36 ||
+          event is! String ||
+          !['reported_outside_perimeter', 'reported_inside_perimeter'].contains(event) ||
+          observed is! String) {
+        throw const FormatException('Invalid attendance alert');
+      }
+      final date = DateTime.parse(observed);
+      if (!date.isUtc) throw const FormatException('Invalid alert timestamp');
+      alerts.add(OwnerAttendanceAlert(id, session, employee, branch, event, date));
+      previous = id;
+    }
+    if (data['next_after'] != previous ||
+        (data['has_more'] == true && rows.length != limit)) {
+      throw const FormatException('Invalid alert cursor');
+    }
+    return OwnerAttendanceAlertPage(List.unmodifiable(alerts), previous, data['has_more'] as bool);
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
