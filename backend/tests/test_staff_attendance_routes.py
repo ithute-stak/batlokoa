@@ -342,3 +342,103 @@ def test_owner_inbox_storage_requires_active_owner(role, active, wide):
     identity = VerifiedStaffIdentity(uuid4(), COMPANY, role, active, frozenset(), wide)
     with pytest.raises(StaffAccessDenied):
         inbox.read(identity)
+
+
+OWNER_ACCESS = "/api/v1/staff/manage/attendance/access-events"
+
+
+@pytest.fixture
+def access_inbox(owner_inbox, monkeypatch):
+    app, client, owner, identity, calls = owner_inbox
+    app.state.owner_attendance_inbox_enabled = True
+    events = []
+    def read(staff, **kwargs):
+        calls.append((staff, kwargs))
+        return {"events": events, "next_before": None, "has_more": False}
+    monkeypatch.setattr(app.state.owner_attendance_inbox, "read_access_events", read)
+    return app, client, owner, identity, calls, events
+
+
+def test_access_inbox_independent_release_gate(access_inbox):
+    app, client, _, _, calls, _ = access_inbox
+    assert client.get(OWNER_ACCESS).status_code == 503
+    app.state.owner_access_inbox_enabled = True
+    app.state.owner_attendance_inbox_enabled = False
+    assert client.get(OWNER_ACCESS).status_code == 503
+    app.state.owner_attendance_inbox_enabled = True
+    app.state.staff_attendance_enabled = False
+    assert client.get(OWNER_ACCESS).status_code == 503
+    assert calls == []
+
+
+def test_access_inbox_verified_scope_and_cursor(access_inbox):
+    app, client, owner, _, calls, _ = access_inbox
+    app.state.owner_access_inbox_enabled = True
+    at, event_id = datetime.now(timezone.utc), uuid4()
+    response = client.get(OWNER_ACCESS, params={
+        "before_at": at.isoformat(), "before_id": str(event_id), "limit": 2,
+        "company_id": str(uuid4()), "employee_id": str(uuid4())})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {"events": [], "next_before": None, "has_more": False}
+    assert calls == [(owner, {"before_at": at, "before_id": event_id, "limit": 2})]
+
+
+def test_access_inbox_rejects_nonowners_and_cross_site(access_inbox):
+    app, client, owner, identity, calls, _ = access_inbox
+    app.state.owner_access_inbox_enabled = True
+    assert client.get(OWNER_ACCESS, headers={"Origin": "https://foreign.test"}).status_code == 403
+    assert client.get(OWNER_ACCESS, headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    identity[0] = STAFF
+    assert client.get(OWNER_ACCESS).status_code == 403
+    identity[0] = VerifiedStaffIdentity(owner.user_id, COMPANY, "COMPANY_ADMIN",
+                                        True, frozenset(), True)
+    assert client.get(OWNER_ACCESS).status_code == 403
+    identity[0] = owner
+    client.cookies.clear()
+    assert client.get(OWNER_ACCESS).status_code == 401
+    assert calls == []
+
+
+@pytest.mark.parametrize("query", [
+    "limit=0", "limit=101", "before_id=invalid",
+    "before_at=2026-11-26T08:00:00Z",
+    "before_id=12345678-1234-1234-1234-123456789abc",
+    "before_at=2026-11-26T08:00:00&before_id=12345678-1234-1234-1234-123456789abc",
+])
+def test_access_inbox_invalid_cursor(access_inbox, query):
+    app, client, _, _, calls, _ = access_inbox
+    app.state.owner_access_inbox_enabled = True
+    assert client.get(OWNER_ACCESS + "?" + query).status_code == 422
+    assert calls == []
+
+
+def test_access_inbox_enriches_names_without_guessing_branch(access_inbox, monkeypatch):
+    app, client, owner, _, _, events = access_inbox
+    app.state.owner_access_inbox_enabled = True
+    events.append({"event_id": str(uuid4()), "employee_id": str(owner.user_id),
+        "branch_id": None, "event_type": "staff_logged_out",
+        "observed_at": datetime.now(timezone.utc).isoformat()})
+    monkeypatch.setattr(routes, "_owner_alert_labels",
+        lambda *args: ({owner.user_id: "Synthetic Employee"}, {}))
+    response = client.get(OWNER_ACCESS)
+    assert response.status_code == 200
+    event = response.json()["events"][0]
+    assert event["employee_name"] == "Synthetic Employee"
+    assert event["branch_name"] is None
+    assert event["branch_id"] is None
+
+
+def test_access_inbox_directory_failure_omits_names(access_inbox, monkeypatch):
+    app, client, owner, _, _, events = access_inbox
+    app.state.owner_access_inbox_enabled = True
+    events.append({"event_id": str(uuid4()), "employee_id": str(owner.user_id),
+        "branch_id": str(BRANCH), "event_type": "reported_login_outside",
+        "observed_at": datetime.now(timezone.utc).isoformat()})
+    def unavailable(*args):
+        raise ValueError("Synthetic directory failure")
+    monkeypatch.setattr(routes, "_owner_alert_labels", unavailable)
+    response = client.get(OWNER_ACCESS)
+    assert response.status_code == 200
+    event = response.json()["events"][0]
+    assert event["employee_name"] is None and event["branch_name"] is None
