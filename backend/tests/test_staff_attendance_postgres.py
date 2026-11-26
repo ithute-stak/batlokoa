@@ -35,7 +35,8 @@ def environment():
                 return psycopg.connect(URL, options=f"-c search_path={schema} -c statement_timeout=10000")
             with connect() as conn:
                 for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql",
-                             "staff_attendance_monitor_schema.sql", "staff_attendance_notification_schema.sql"):
+                             "staff_attendance_monitor_schema.sql", "staff_attendance_notification_schema.sql",
+                             "staff_attendance_access_events_schema.sql"):
                     conn.execute(Path("backend/app", name).read_text())
             company, branch_id = uuid4(), uuid4()
             branch = ActiveBranch(company, branch_id, True)
@@ -310,3 +311,62 @@ def test_delivery_expired_final_attempt_is_terminal(delivery_environment):
         assert conn.execute("""SELECT state, attempts, last_error_code
             FROM staff_attendance_notification_delivery"""
         ).fetchone() == ("dead", 10, "lease_expired")
+
+
+def test_access_login_requires_fresh_confident_outside_reading(environment):
+    from backend.app.staff_attendance_access_store import AttendanceAccessStore
+    _, connect, staff, branch, position = environment
+    audit = AttendanceAccessStore(connect)
+    outside = Position(position.latitude + 0.001, position.longitude, 2)
+    uncertain = Position(position.latitude + 0.001, position.longitude, 50)
+    assert audit.record_login(staff, uuid4(), branch, position,
+        captured_at=datetime.now(timezone.utc)) == (LocationState.INSIDE, False)
+    assert audit.record_login(staff, uuid4(), branch, uncertain,
+        captured_at=datetime.now(timezone.utc)) == (LocationState.UNVERIFIED, False)
+    assert audit.record_login(staff, uuid4(), branch, outside,
+        captured_at=datetime.now(timezone.utc)-timedelta(minutes=2)) == (LocationState.UNVERIFIED, False)
+    event = uuid4()
+    assert audit.record_login(staff, event, branch, outside,
+        captured_at=datetime.now(timezone.utc)) == (LocationState.OUTSIDE, True)
+    assert audit.record_login(staff, event, branch, outside,
+        captured_at=datetime.now(timezone.utc)) == (LocationState.OUTSIDE, False)
+    assert counts(connect) == (0, 0)
+    with connect() as conn:
+        rows = conn.execute("""SELECT event_id, company_id, employee_id, branch_id,
+            event_type, location_revision FROM staff_attendance_access_events""").fetchall()
+        assert len(rows) == 1
+        assert rows[0][:5] == (event, staff.company_id, staff.user_id,
+                               branch.branch_id, "reported_login_outside")
+        assert rows[0][5] > 0
+
+
+def test_access_logout_idempotency_and_scope(environment):
+    from backend.app.staff_attendance_access_store import AttendanceAccessStore
+    from backend.app.staff_authorization import StaffAccessDenied
+    _, connect, staff, branch, position = environment
+    audit = AttendanceAccessStore(connect)
+    event = uuid4()
+    assert audit.record_logout(staff, event) is True
+    assert audit.record_logout(staff, event) is False
+    foreign = VerifiedStaffIdentity(staff.user_id, uuid4(), "LOAN_OFFICER",
+                                    True, frozenset({branch.branch_id}))
+    with pytest.raises(StaffAccessDenied):
+        audit.record_logout(foreign, event)
+    with pytest.raises(StaffAccessDenied):
+        audit.record_login(foreign, uuid4(), branch, position,
+                           captured_at=datetime.now(timezone.utc))
+    inactive = VerifiedStaffIdentity(staff.user_id, staff.company_id, "LOAN_OFFICER",
+                                     False, staff.branch_ids)
+    with pytest.raises(StaffAccessDenied):
+        audit.record_logout(inactive, uuid4())
+    owner = VerifiedStaffIdentity(uuid4(), staff.company_id, "COMPANY_OWNER",
+                                  True, frozenset(), True)
+    assert audit.record_logout(owner, uuid4()) is True
+    with connect() as conn:
+        rows = conn.execute("""SELECT employee_id, branch_id, event_type, location_revision
+            FROM staff_attendance_access_events""").fetchall()
+        assert set(rows) == {
+            (staff.user_id, branch.branch_id, "staff_logged_out", None),
+            (owner.user_id, None, "staff_logged_out", None),
+        }
+    assert counts(connect) == (0, 0)
