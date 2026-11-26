@@ -56,6 +56,7 @@ class _Record:
     access_token: str
     csrf_token: str
     expires_at: datetime
+    logout_event_id: UUID
 
 
 class StagingStaffSessionStore:
@@ -83,7 +84,7 @@ class StagingStaffSessionStore:
             if len(self._items) >= self._limit:
                 raise StaffVerificationUnavailable("Staging session capacity reached")
             self._items[hashlib.sha256(session.encode()).hexdigest()] = _Record(
-                token, csrf, expires
+                token, csrf, expires, uuid4()
             )
         return session, csrf
 
@@ -291,6 +292,28 @@ def staff_session(request: Request):
     }, headers=NO_STORE)
 
 
+def _record_logout_event(request, cfg, record):
+    """Best-effort audit after revocation; never prevent secure sign-out."""
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "staff_logout_audit_enabled", False) is not True):
+        return
+    store = getattr(request.app.state, "staff_attendance_access_store", None)
+    if not isinstance(store, AttendanceAccessStore):
+        return
+    try:
+        base = cfg.verifier
+        identity = LoanHubStaffVerifier(
+            origin=cfg.loanhub_origin, public_key=base._public_key,
+            batlokoa_company_id=base._company_id, client=base._client,
+            allow_unverified_company_owner=False,
+        ).verify(record.access_token)
+        store.record_logout(identity, record.logout_event_id)
+    except Exception:
+        # Do not leak credentials or exception text. Logout is already revoked.
+        # Delivery and operational health monitoring are separate release gates.
+        return
+
+
 @router.post("/api/v1/staff/logout", include_in_schema=False)
 def staff_logout(request: Request):
     cfg = _config(request)
@@ -306,6 +329,7 @@ def staff_logout(request: Request):
             request.cookies.get(CSRF_COOKIE) != csrf):
         return _response("CSRF_REJECTED", 403)
     cfg.store.revoke(session)
+    _record_logout_event(request, cfg, record)
     response = JSONResponse({"logged_out": True}, headers=NO_STORE)
     response.delete_cookie(COOKIE, secure=True, httponly=True,
                            samesite="strict", path="/")
