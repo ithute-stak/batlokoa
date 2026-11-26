@@ -430,3 +430,51 @@ def owner_set_work_roster(payload: WorkRosterDraft, request: Request):
     return JSONResponse({"changed": changed, "employee_id": str(employee.user_id),
                          "work_date": payload.work_date.isoformat(),
                          "scheduled_to_work": payload.scheduled_to_work}, headers=NO_STORE)
+
+
+@router.get("/api/v1/staff/manage/attendance/work-roster/employees", include_in_schema=False)
+def owner_work_roster_employees(request: Request):
+    _, record, staff, denial = _roster_context(request)
+    if denial is not None:
+        return denial
+    try:
+        response = call_loanhub(request, method="GET",
+            path="/api/v1/company-staff/?limit=100", token=record.access_token,
+            company_id=staff.company_id)
+        if (response.status_code != 200 or len(response.content) > 262144
+                or "application/json" not in response.headers.get("content-type", "").lower()):
+            return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+        rows = response.json()
+        if not isinstance(rows, list) or len(rows) >= 100:
+            # A full upstream page may be truncated. Do not imply completeness.
+            return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+        seen, employees = set(), []
+        for row in rows:
+            if UUID(str(row["company_id"])) != staff.company_id:
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            user = row["user"]
+            identifier = UUID(str(user["id"]))
+            if (identifier in seen or
+                    (row.get("user_id") is not None and UUID(str(row["user_id"])) != identifier)):
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            seen.add(identifier)
+            role = row["role"]
+            if not isinstance(role, str) or type(row.get("is_active")) is not bool:
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            role = role.upper()
+            if not row["is_active"] or role not in {
+                    "COMPANY_OWNER", "COMPANY_ADMIN", "BRANCH_MANAGER",
+                    "LOAN_OFFICER", "CREDIT_ANALYST"}:
+                continue
+            person = user.get("person")
+            if person is None:
+                person = {}
+            first, last = person.get("first_name"), person.get("last_name")
+            if any(value is not None and not isinstance(value, str) for value in (first, last)):
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            name = ((first or "") + " " + (last or "")).strip()[:200] or None
+            employees.append({"employee_id": str(identifier), "name": name, "role": role})
+        employees.sort(key=lambda item: item["employee_id"])
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+    return JSONResponse({"employees": employees}, headers=NO_STORE)
