@@ -9,6 +9,7 @@ import 'staff_client_registration_screen.dart';
 import 'owner_staff_management_screen.dart';
 import 'staff_attendance_screen.dart';
 import 'staff_monitoring_scheduler.dart';
+import 'owner_attendance_alerts_screen.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
 class StaffWorkspaceShell extends StatefulWidget {
@@ -136,6 +137,16 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
   bool get owner => widget.session.role == 'COMPANY_OWNER'
       && widget.session.companyWide;
   bool get canManage => owner && widget.gateway is OwnerStaffManagementGateway;
+  static const _ownerAlertsReleased = bool.fromEnvironment('OWNER_ATTENDANCE_ALERTS_ENABLED');
+  bool get canViewAttendanceAlerts => _ownerAlertsReleased && owner &&
+      widget.gateway is OwnerAttendanceInboxGateway;
+
+  void openAttendanceAlerts() {
+    if (!canViewAttendanceAlerts || widget.busy) return;
+    open(OwnerAttendanceAlertsScreen(
+      gateway: widget.gateway as OwnerAttendanceInboxGateway,
+    ));
+  }
   void open(Widget screen) => Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => screen));
 
@@ -270,6 +281,11 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
     ]),
     const SizedBox(height: 12),
     actionGrid([
+      if (canViewAttendanceAlerts)
+        KeyedSubtree(key: const Key('owner-open-attendance-alerts'),
+          child: BfsActionPanel(icon: Icons.notifications_active_outlined,
+            title: 'Attendance alerts', description: 'Review reported office perimeter events',
+            onPressed: openAttendanceAlerts)),
       if (canAttend)
         KeyedSubtree(key: const Key('staff-open-attendance'),
           child: BfsActionPanel(icon: Icons.access_time_rounded,
