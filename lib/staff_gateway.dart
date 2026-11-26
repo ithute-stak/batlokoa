@@ -284,8 +284,11 @@ class OwnerAttendanceAlert {
   final String branchId;
   final String eventType;
   final DateTime observedAt;
+  final String? employeeName;
+  final String? branchName;
   const OwnerAttendanceAlert(this.id, this.sessionId, this.employeeId,
-      this.branchId, this.eventType, this.observedAt);
+      this.branchId, this.eventType, this.observedAt,
+      {this.employeeName, this.branchName});
 }
 
 class OwnerAttendanceAlertPage {
@@ -839,7 +842,17 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       }
       final date = DateTime.parse(observed);
       if (!date.isUtc) throw const FormatException('Invalid alert timestamp');
-      alerts.add(OwnerAttendanceAlert(id, session, employee, branch, event, date));
+      String? label(Object? value, int maxLength) {
+        if (value == null) return null;
+        if (value is! String || value.length > maxLength) {
+          throw const FormatException('Invalid attendance label');
+        }
+        final trimmed = value.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }
+      alerts.add(OwnerAttendanceAlert(id, session, employee, branch, event, date,
+          employeeName: label(row['employee_name'], 200),
+          branchName: label(row['branch_name'], 120)));
       previous = id;
     }
     if (data['next_after'] != previous ||
