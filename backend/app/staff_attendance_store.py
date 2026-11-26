@@ -91,3 +91,33 @@ class AttendanceStore:
                          event.location_revision, event.location_state.value))
                     event_id = cur.fetchone()[0]
         return session_id, event_id, event
+
+
+    def read_sessions(self, identity, *, open_only=False, limit=30, before=None):
+        """Return only the verified employee's own sessions, including past branches."""
+        if (not isinstance(identity, VerifiedStaffIdentity)
+                or identity.active is not True
+                or identity.role not in {"COMPANY_OWNER", "COMPANY_ADMIN",
+                    "BRANCH_MANAGER", "LOAN_OFFICER", "CREDIT_ANALYST"}):
+            raise StaffAccessDenied("Active authorized employee required")
+        if (type(limit) is not int or not 1 <= limit <= 100
+                or (before is not None and (type(before) is not int or before <= 0))):
+            raise ValueError("Invalid pagination")
+        query = """SELECT session_id, branch_id, clocked_in_at, clocked_out_at
+            FROM staff_attendance_sessions WHERE company_id=%s AND employee_id=%s"""
+        params = [identity.company_id, identity.user_id]
+        if open_only:
+            query += " AND clocked_out_at IS NULL"
+        if before is not None:
+            query += " AND session_id < %s"
+            params.append(before)
+        query += " ORDER BY session_id DESC LIMIT %s"
+        params.append(limit)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                rows = cur.fetchall()
+        return [{"session_id": row[0], "branch_id": str(row[1]),
+                 "clocked_in_at": row[2].isoformat(),
+                 "clocked_out_at": row[3].isoformat() if row[3] is not None else None}
+                for row in rows]
