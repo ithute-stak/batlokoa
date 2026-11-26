@@ -187,8 +187,8 @@ class _OwnerAttendanceAlertsScreenState extends State<OwnerAttendanceAlertsScree
                   ? Icons.warning_amber_rounded : Icons.check_circle_outline),
               title: Text(alert.eventType == 'reported_outside_perimeter'
                   ? 'Reported outside office perimeter' : 'Reported return inside perimeter'),
-              subtitle: Text('Employee ID: ${alert.employeeId}\n'
-                  'Branch ID: ${alert.branchId}\n'
+              subtitle: Text('Employee: ${alert.employeeName ?? "Unknown name (ID: ${alert.employeeId})"}\n'
+                  'Branch: ${alert.branchName ?? "Unknown name (ID: ${alert.branchId})"}\n'
                   'Session: ${alert.sessionId}\n${_time(alert.observedAt)}'),
             )),
           if (_more && !_failed)
