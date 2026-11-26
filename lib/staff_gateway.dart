@@ -310,6 +310,30 @@ abstract class OwnerAttendanceInboxGateway {
   Future<OwnerAttendanceAlertPage> attendanceAlerts({int after = 0, int limit = 50});
 }
 
+class OwnerAccessEvent {
+  final String id, employeeId, eventType;
+  final String? branchId, employeeName, branchName;
+  final DateTime observedAt;
+  const OwnerAccessEvent(this.id, this.employeeId, this.eventType,
+      this.observedAt, {this.branchId, this.employeeName, this.branchName});
+}
+
+class OwnerAccessCursor {
+  final String observedAt, eventId;
+  const OwnerAccessCursor(this.observedAt, this.eventId);
+}
+
+class OwnerAccessEventPage {
+  final List<OwnerAccessEvent> events;
+  final OwnerAccessCursor? nextBefore;
+  const OwnerAccessEventPage(this.events, this.nextBefore);
+  bool get hasMore => nextBefore != null;
+}
+
+abstract class OwnerAccessInboxGateway {
+  Future<OwnerAccessEventPage> accessEvents({OwnerAccessCursor? before, int limit = 50});
+}
+
 abstract class StaffBranchLocationGateway {
   Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
 }
@@ -341,7 +365,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -892,6 +916,88 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Invalid alert cursor');
     }
     return OwnerAttendanceAlertPage(List.unmodifiable(alerts), previous, data['has_more'] as bool);
+  }
+
+  @override
+  Future<OwnerAccessEventPage> accessEvents({OwnerAccessCursor? before, int limit = 50}) async {
+    final uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+    bool validId(Object? value) => value is String && uuid.hasMatch(value);
+    if (limit < 1 || limit > 100 ||
+        (before != null && (!validId(before.eventId) ||
+          DateTime.tryParse(before.observedAt)?.isUtc != true))) {
+      throw ArgumentError('Invalid access event pagination');
+    }
+    final uri = _url('/api/v1/staff/manage/attendance/access-events').replace(
+      queryParameters: {'limit': '$limit',
+        if (before != null) 'before_at': before.observedAt,
+        if (before != null) 'before_id': before.eventId});
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Owner access inbox unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['events'] is! List ||
+        data['has_more'] is! bool) {
+      throw const FormatException('Invalid access page');
+    }
+    final rows = data['events'] as List;
+    if (rows.length > limit) throw const FormatException('Oversized access page');
+    final events = <OwnerAccessEvent>[];
+    final seen = <String>{};
+    DateTime? previous = before == null ? null : DateTime.parse(before.observedAt);
+    String? previousId = before?.eventId;
+    String? lastRaw;
+    String? label(Object? value, int maxLength) {
+      if (value == null) return null;
+      if (value is! String || value.length > maxLength) {
+        throw const FormatException('Invalid access event label');
+      }
+      return value.trim().isEmpty ? null : value.trim();
+    }
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid access event');
+      final id = row['event_id'];
+      final employee = row['employee_id'];
+      final branch = row['branch_id'];
+      final kind = row['event_type'];
+      final observed = row['observed_at'];
+      if (!validId(id) || !validId(employee) ||
+          (branch != null && !validId(branch)) ||
+          !['reported_login_outside', 'staff_logged_out'].contains(kind) ||
+          (kind == 'reported_login_outside' && branch == null) ||
+          observed is! String) {
+        throw const FormatException('Invalid access event fields');
+      }
+      final date = DateTime.parse(observed);
+      final eventId = id as String;
+      if (!date.isUtc || !seen.add(eventId) ||
+          (previous != null && (date.isAfter(previous) ||
+            (date == previous && eventId.compareTo(previousId!) >= 0)))) {
+        throw const FormatException('Invalid access event ordering');
+      }
+      events.add(OwnerAccessEvent(eventId, employee as String, kind as String,
+          date, branchId: branch as String?,
+          employeeName: label(row['employee_name'], 200),
+          branchName: label(row['branch_name'], 120)));
+      previous = date;
+      previousId = eventId;
+      lastRaw = observed;
+    }
+    final cursor = data['next_before'];
+    OwnerAccessCursor? next;
+    if (data['has_more'] == true) {
+      if (rows.length != limit || cursor is! Map<String, dynamic> ||
+          cursor['event_id'] != previousId || cursor['observed_at'] != lastRaw) {
+        throw const FormatException('Invalid access page cursor');
+      }
+      next = OwnerAccessCursor(lastRaw!, previousId!);
+    } else if (cursor != null) {
+      throw const FormatException('Unexpected access page cursor');
+    }
+    return OwnerAccessEventPage(List.unmodifiable(events), next);
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(
