@@ -1,11 +1,11 @@
-"""Opt-in attendance write API; not mounted or activated automatically."""
+"""Opt-in attendance API; disabled unless explicitly configured."""
 import secrets
 from datetime import datetime
 from uuid import UUID
 
 import httpx
 import psycopg
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -126,3 +126,46 @@ def clock_in(payload: AttendanceCapture, request: Request):
 @router.post("/api/v1/staff/attendance/clock-out", include_in_schema=False)
 def clock_out(payload: AttendanceCapture, request: Request):
     return _record(AttendanceAction.CLOCK_OUT, payload, request)
+
+
+def _read(request: Request, *, open_only=False, limit=30, before=None):
+    store = getattr(request.app.state, "staff_attendance_store", None)
+    cfg = _config(request)
+    if (getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or not isinstance(store, AttendanceStore) or cfg is None):
+        return fail("ATTENDANCE_DISABLED", 503)
+    record = cfg.store.resolve(request.cookies.get(COOKIE, ""))
+    if record is None:
+        return fail("UNAUTHENTICATED", 401)
+    try:
+        base = cfg.verifier
+        staff = LoanHubStaffVerifier(
+            origin=cfg.loanhub_origin, public_key=base._public_key,
+            batlokoa_company_id=base._company_id, client=base._client,
+            allow_unverified_company_owner=False,
+        ).verify(record.access_token)
+    except StaffVerificationUnavailable:
+        return fail("STAFF_VERIFICATION_REQUIRED", 403)
+    try:
+        rows = store.read_sessions(staff, open_only=open_only, limit=limit, before=before)
+    except StaffAccessDenied:
+        return fail("STAFF_VERIFICATION_REQUIRED", 403)
+    except (psycopg.Error, ValueError):
+        return fail("ATTENDANCE_UNAVAILABLE", 503)
+    if open_only:
+        return JSONResponse({"clocked_in": bool(rows),
+                             "session": rows[0] if rows else None}, headers=NO_STORE)
+    return JSONResponse({"sessions": rows,
+                         "next_before": rows[-1]["session_id"] if len(rows) == limit else None},
+                        headers=NO_STORE)
+
+
+@router.get("/api/v1/staff/attendance/status", include_in_schema=False)
+def attendance_status(request: Request):
+    return _read(request, open_only=True, limit=1)
+
+
+@router.get("/api/v1/staff/attendance/history", include_in_schema=False)
+def attendance_history(request: Request, limit: int = Query(30, ge=1, le=100),
+                       before: int | None = Query(None, gt=0, le=9223372036854775807)):
+    return _read(request, limit=limit, before=before)
