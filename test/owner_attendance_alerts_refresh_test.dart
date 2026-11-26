@@ -41,6 +41,34 @@ Future<void> closeInbox(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('shows resolved names instead of raw identifiers', (tester) async {
+    final gateway = FakeInbox()..rows.add(OwnerAttendanceAlert(
+      1, 7, 'employee-1', 'branch-1', 'reported_outside_perimeter',
+      DateTime.utc(2026, 11, 26, 6),
+      employeeName: 'Example Employee', branchName: 'Maseru Office',
+    ));
+    await openInbox(tester, gateway);
+    try {
+      expect(find.textContaining('Employee: Example Employee'), findsOneWidget);
+      expect(find.textContaining('Branch: Maseru Office'), findsOneWidget);
+      expect(find.textContaining('employee-1'), findsNothing);
+      expect(find.textContaining('branch-1'), findsNothing);
+    } finally {
+      await closeInbox(tester);
+    }
+  });
+
+  testWidgets('unresolved labels retain explicit identifier fallback', (tester) async {
+    final gateway = FakeInbox()..rows.add(alert(1));
+    await openInbox(tester, gateway);
+    try {
+      expect(find.textContaining('Employee: Unknown name (ID: employee-1)'), findsOneWidget);
+      expect(find.textContaining('Branch: Unknown name (ID: branch)'), findsOneWidget);
+    } finally {
+      await closeInbox(tester);
+    }
+  });
+
   testWidgets('poll reconciles late committed lower IDs without duplicates', (tester) async {
     final gateway = FakeInbox()..rows.add(alert(2));
     await openInbox(tester, gateway);
