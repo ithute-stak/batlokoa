@@ -35,7 +35,7 @@ NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 class LoginLocation(BaseModel):
-    branch_id: UUID
+    branch_id: UUID | None = None
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False, strict=True)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False, strict=True)
     accuracy_m: float = Field(gt=0, allow_inf_nan=False, strict=True)
@@ -156,9 +156,12 @@ def _login_location(request, cfg, token, location):
             batlokoa_company_id=base._company_id, client=base._client,
             allow_unverified_company_owner=False,
         ).verify(token)
-        if not (location.branch_id in identity.branch_ids or
-                (identity.company_wide_scope is True and
-                 identity.role in {"COMPANY_OWNER", "COMPANY_ADMIN"})):
+        # The verified membership is authoritative, never a browser-selected
+        # office. Accounts without exactly one assigned branch are ambiguous.
+        if len(identity.branch_ids) != 1:
+            return LocationState.UNVERIFIED.value
+        branch_id = next(iter(identity.branch_ids))
+        if location.branch_id is not None and location.branch_id != branch_id:
             return LocationState.UNVERIFIED.value
         def read(client):
             return client.get(cfg.loanhub_origin.rstrip("/") + "/api/v1/branches/?limit=100",
@@ -188,10 +191,10 @@ def _login_location(request, cfg, token, location):
             seen.add(identifier)
             if row.get("is_active") is True:
                 active.add(identifier)
-        if location.branch_id not in active:
+        if branch_id not in active:
             return LocationState.UNVERIFIED.value
         reading, _ = store.record_login(identity, uuid4(),
-            ActiveBranch(identity.company_id, location.branch_id, True),
+            ActiveBranch(identity.company_id, branch_id, True),
             Position(location.latitude, location.longitude, location.accuracy_m),
             captured_at=location.captured_at)
         return reading.value
