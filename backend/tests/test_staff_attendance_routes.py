@@ -169,3 +169,84 @@ def test_history_invalid_pagination(configured, monkeypatch, query):
     monkeypatch.setattr(app.state.staff_attendance_store, "read_sessions",
                         lambda *a, **kw: pytest.fail("Invalid pagination reached storage"))
     assert client.get(PATH + "history?" + query).status_code == 422
+
+
+@pytest.fixture
+def monitoring(configured, monkeypatch):
+    from backend.app.staff_attendance_monitor_store import AttendanceMonitorStore
+    from backend.app.staff_attendance_monitor import MonitorState, MonitorAlert
+    from backend.app.staff_geofence import LocationState
+    app, client, _, upstream = configured
+    store = AttendanceMonitorStore(lambda: pytest.fail("Unexpected database access"))
+    app.state.staff_attendance_monitor_store = store
+    calls = []
+    def save(staff, branch, session_id, sample, **kwargs):
+        calls.append((staff, branch, session_id, sample, kwargs))
+        return (LocationState.OUTSIDE,
+                MonitorState(datetime.now(timezone.utc), LocationState.OUTSIDE),
+                MonitorAlert.EXIT)
+    monkeypatch.setattr(store, "record", save)
+    return app, client, calls, upstream
+
+
+def test_monitor_disabled_by_default_and_independently_gated(monitoring):
+    app, client, calls, upstream = monitoring
+    assert post(client, "monitor", payload(session_id=7)).status_code == 503
+    app.state.staff_attendance_monitor_enabled = True
+    app.state.staff_attendance_enabled = False
+    assert post(client, "monitor", payload(session_id=7)).status_code == 503
+    assert calls == upstream == []
+
+
+def test_monitor_authorized_response(monitoring):
+    app, client, calls, upstream = monitoring
+    app.state.staff_attendance_monitor_enabled = True
+    response = post(client, "monitor", payload(session_id=7))
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    data = response.json()
+    assert data["session_id"] == 7
+    assert data["reading"] == data["last_confirmed"] == "verified_outside"
+    assert data["transition_recorded"] is True
+    assert set(data) == {"session_id", "reading", "last_confirmed", "observed_at", "transition_recorded"}
+    assert len(calls) == len(upstream) == 1
+    assert calls[0][0] == STAFF and calls[0][1].branch_id == BRANCH
+    assert calls[0][2] == 7
+    assert upstream[0]["headers"]["X-Active-Role"] == "loan_officer"
+
+
+def test_monitor_denials_before_storage(monitoring):
+    app, client, calls, upstream = monitoring
+    app.state.staff_attendance_monitor_enabled = True
+    body = payload(session_id=7)
+    assert post(client, "monitor", body, origin="https://other.example.test").status_code == 403
+    assert post(client, "monitor", body, csrf="bad").status_code == 403
+    assert post(client, "monitor", body | {"branch_id": str(uuid4())}).status_code == 403
+    assert post(client, "monitor", body | {"employee_id": str(uuid4())}).status_code == 422
+    assert post(client, "monitor", body | {"company_id": str(uuid4())}).status_code == 422
+    client.cookies.clear()
+    assert post(client, "monitor", body).status_code == 401
+    assert calls == upstream == []
+
+
+@pytest.mark.parametrize("session_id", [0, -1, True, "7", 9223372036854775808])
+def test_monitor_invalid_session_id(monitoring, session_id):
+    app, client, calls, upstream = monitoring
+    app.state.staff_attendance_monitor_enabled = True
+    assert post(client, "monitor", payload(session_id=session_id)).status_code == 422
+    assert calls == upstream == []
+
+
+@pytest.mark.parametrize("code,status", [
+    ("NO_ACTIVE_SESSION", 409), ("LOCATION_REPLAYED", 409),
+    ("LOCATION_UNVERIFIED", 422), ("BRANCH_LOCATION_UNAVAILABLE", 503),
+])
+def test_monitor_policy_errors(monitoring, monkeypatch, code, status):
+    app, client, _, _ = monitoring
+    app.state.staff_attendance_monitor_enabled = True
+    def reject(*args, **kwargs):
+        raise AttendanceRejected(code)
+    monkeypatch.setattr(app.state.staff_attendance_monitor_store, "record", reject)
+    response = post(client, "monitor", payload(session_id=7))
+    assert response.status_code == status
+    assert response.json()["code"] == (code if status != 503 else "MONITOR_UNAVAILABLE")
