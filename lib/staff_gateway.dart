@@ -124,7 +124,7 @@ abstract class StaffSecondFactorGateway {
 abstract class StaffLocationLoginGateway {
   Future<StaffSession> loginWithLocation(String phone, String password, {
     String? otp, String? recoveryCode,
-    required String branchId, required StaffLocationCapture capture,
+    String? branchId, required StaffLocationCapture capture,
   });
 }
 
@@ -382,15 +382,15 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
   @override
   Future<StaffSession> loginWithLocation(String phone, String password, {
     String? otp, String? recoveryCode,
-    required String branchId, required StaffLocationCapture capture,
+    String? branchId, required StaffLocationCapture capture,
   }) {
-    if (!RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(branchId) ||
+    if ((branchId != null && !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(branchId)) ||
         !capture.isUsableAt(DateTime.now())) {
-      throw StateError('Fresh location and valid branch required');
+      throw StateError('Fresh location and valid optional branch required');
     }
     return _login(phone, password, otp: otp, recoveryCode: recoveryCode,
       location: {
-        'branch_id': branchId,
+        if (branchId != null) 'branch_id': branchId,
         'latitude': capture.latitude,
         'longitude': capture.longitude,
         'accuracy_m': capture.accuracyM,
