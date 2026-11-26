@@ -35,7 +35,7 @@ def environment():
                 return psycopg.connect(URL, options=f"-c search_path={schema} -c statement_timeout=10000")
             with connect() as conn:
                 for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql",
-                             "staff_attendance_monitor_schema.sql"):
+                             "staff_attendance_monitor_schema.sql", "staff_attendance_notification_schema.sql"):
                     conn.execute(Path("backend/app", name).read_text())
             company, branch_id = uuid4(), uuid4()
             branch = ActiveBranch(company, branch_id, True)
@@ -208,3 +208,105 @@ def test_monitor_atomic_alert_and_restart(environment, monkeypatch):
         assert conn.execute("""SELECT last_confirmed, transition_sequence
             FROM staff_attendance_monitor_state""").fetchone() == ("verified_outside", 1)
         assert conn.execute("SELECT count(*) FROM staff_attendance_monitor_outbox").fetchone()[0] == 1
+
+
+@pytest.fixture
+def delivery_environment(environment):
+    from backend.app.staff_attendance_notification_queue import AttendanceDeliveryQueue
+    _, connect, staff, branch, _ = environment
+    session, _, _ = record(environment)
+    now = datetime.now(timezone.utc)
+    with connect() as conn:
+        revision = conn.execute(
+            "SELECT revision_id FROM staff_branch_location_history"
+        ).fetchone()[0]
+        alert_id = conn.execute("""INSERT INTO staff_attendance_monitor_outbox
+            (session_id, company_id, employee_id, branch_id, location_revision,
+             transition_sequence, event_type, observed_at)
+            VALUES (%s,%s,%s,%s,%s,1,'reported_outside_perimeter',%s)
+            RETURNING alert_id""",
+            (session, staff.company_id, staff.user_id, branch.branch_id, revision, now)
+        ).fetchone()[0]
+    queue = AttendanceDeliveryQueue(connect, company_id=staff.company_id,
+                                    release_at=now-timedelta(seconds=1))
+    return queue, connect, staff, alert_id, now
+
+
+def test_delivery_scope_cutoff_and_concurrent_claim(delivery_environment):
+    from backend.app.staff_attendance_notification_queue import AttendanceDeliveryQueue
+    queue, connect, staff, alert_id, now = delivery_environment
+    foreign = AttendanceDeliveryQueue(connect, company_id=uuid4(), release_at=now)
+    future = AttendanceDeliveryQueue(connect, company_id=staff.company_id,
+                                     release_at=now+timedelta(seconds=1))
+    assert foreign.enqueue() == future.enqueue() == 0
+    assert queue.enqueue() == 1
+    assert queue.enqueue() == 0
+    assert foreign.claim() is None and future.claim() is None
+    barrier = Barrier(2, timeout=10)
+    def claim():
+        barrier.wait()
+        return queue.claim()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(claim) for _ in range(2)]
+        claims = [job.result(timeout=20) for job in jobs]
+    accepted = [item for item in claims if item is not None]
+    assert len(accepted) == 1
+    item = accepted[0]
+    assert item.alert_id == alert_id and item.attempts == 1
+    with pytest.raises(ValueError):
+        foreign.acknowledge(item)
+    assert future.acknowledge(item) is False
+    assert queue.acknowledge(item) is True
+    assert queue.acknowledge(item) is False
+    assert queue.claim() is None
+    with connect() as conn:
+        assert conn.execute("""SELECT d.state, d.delivered_at = a.delivered_at
+            FROM staff_attendance_notification_delivery d
+            JOIN staff_attendance_monitor_outbox a USING (alert_id)"""
+        ).fetchone() == ("delivered", True)
+
+
+def test_delivery_retry_and_expired_lease_fencing(delivery_environment):
+    queue, connect, _, alert_id, _ = delivery_environment
+    queue.enqueue()
+    first = queue.claim()
+    assert queue.fail(first, code="provider_unavailable") is True
+    assert queue.claim() is None
+    with connect() as conn:
+        conn.execute("""UPDATE staff_attendance_notification_delivery
+            SET available_at=clock_timestamp()-interval '1 second' WHERE alert_id=%s""",
+            (alert_id,))
+    second = queue.claim()
+    assert second.attempts == 2
+    assert second.idempotency_key == first.idempotency_key
+    assert queue.acknowledge(first) is False
+    with connect() as conn:
+        conn.execute("""UPDATE staff_attendance_notification_delivery
+            SET lease_until=clock_timestamp()-interval '1 second' WHERE alert_id=%s""",
+            (alert_id,))
+    third = queue.claim()
+    assert third.attempts == 3 and third.lease_token != second.lease_token
+    assert queue.fail(second, code="provider_unavailable") is False
+    assert queue.fail(third, code="provider_rejected", permanent=True) is True
+    assert queue.claim() is None
+    with connect() as conn:
+        assert conn.execute("""SELECT state, attempts, last_error_code
+            FROM staff_attendance_notification_delivery"""
+        ).fetchone() == ("dead", 3, "provider_rejected")
+        assert conn.execute("SELECT delivered_at FROM staff_attendance_monitor_outbox").fetchone()[0] is None
+
+
+def test_delivery_expired_final_attempt_is_terminal(delivery_environment):
+    queue, connect, _, alert_id, _ = delivery_environment
+    queue.enqueue()
+    claim = queue.claim()
+    with connect() as conn:
+        conn.execute("""UPDATE staff_attendance_notification_delivery
+            SET attempts=10, lease_until=clock_timestamp()-interval '1 second'
+            WHERE alert_id=%s""", (alert_id,))
+    assert queue.claim() is None
+    assert queue.acknowledge(claim) is False
+    with connect() as conn:
+        assert conn.execute("""SELECT state, attempts, last_error_code
+            FROM staff_attendance_notification_delivery"""
+        ).fetchone() == ("dead", 10, "lease_expired")
