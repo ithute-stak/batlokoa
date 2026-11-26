@@ -36,7 +36,7 @@ def environment():
             with connect() as conn:
                 for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql",
                              "staff_attendance_monitor_schema.sql", "staff_attendance_notification_schema.sql",
-                             "staff_attendance_access_events_schema.sql"):
+                             "staff_attendance_access_events_schema.sql", "staff_access_notification_schema.sql"):
                     conn.execute(Path("backend/app", name).read_text())
             company, branch_id = uuid4(), uuid4()
             branch = ActiveBranch(company, branch_id, True)
@@ -370,3 +370,122 @@ def test_access_logout_idempotency_and_scope(environment):
             (owner.user_id, None, "staff_logged_out", None),
         }
     assert counts(connect) == (0, 0)
+
+
+@pytest.fixture
+def access_delivery_environment(environment):
+    from backend.app.staff_access_notification_queue import AccessDeliveryQueue
+    from backend.app.staff_attendance_access_store import AttendanceAccessStore
+    _, connect, staff, branch, position = environment
+    now = datetime.now(timezone.utc)
+    event = uuid4()
+    assert AttendanceAccessStore(connect).record_logout(staff, event)
+    queue = AccessDeliveryQueue(connect, company_id=staff.company_id,
+                                release_at=now-timedelta(seconds=1))
+    return queue, connect, staff, event, now
+
+
+def test_access_delivery_scope_and_concurrent_claim(access_delivery_environment):
+    from backend.app.staff_access_notification_queue import AccessDeliveryQueue
+    queue, connect, staff, event, now = access_delivery_environment
+    foreign = AccessDeliveryQueue(connect, company_id=uuid4(), release_at=now)
+    future = AccessDeliveryQueue(connect, company_id=staff.company_id,
+                                 release_at=now+timedelta(days=1))
+    assert foreign.enqueue() == future.enqueue() == 0
+    assert queue.enqueue() == 1
+    assert queue.enqueue() == 0
+    assert foreign.claim() is None and future.claim() is None
+    barrier = Barrier(2, timeout=10)
+    def claim():
+        barrier.wait()
+        return queue.claim()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(claim) for _ in range(2)]
+        claims = [job.result(timeout=20) for job in jobs]
+    claimed = [item for item in claims if item is not None]
+    assert len(claimed) == 1
+    item = claimed[0]
+    assert item.event_id == event and item.attempts == 1
+    assert item.event_type == "staff_logged_out"
+    with pytest.raises(ValueError):
+        foreign.acknowledge(item)
+    assert future.acknowledge(item) is False
+    assert queue.acknowledge(item) is True
+    assert queue.acknowledge(item) is False
+    assert queue.claim() is None and queue.enqueue() == 0
+    with connect() as conn:
+        assert conn.execute("""SELECT state, delivered_at IS NOT NULL
+            FROM staff_access_notification_delivery WHERE event_id=%s""",
+            (event,)).fetchone() == ("delivered", True)
+        assert conn.execute("""SELECT event_type FROM staff_attendance_access_events
+            WHERE event_id=%s""", (event,)).fetchone() == ("staff_logged_out",)
+
+
+def test_access_delivery_retry_and_lease_fencing(access_delivery_environment):
+    queue, connect, _, event, _ = access_delivery_environment
+    queue.enqueue()
+    first = queue.claim()
+    assert queue.fail(first, code="provider_unavailable") is True
+    assert queue.claim() is None
+    with connect() as conn:
+        conn.execute("""UPDATE staff_access_notification_delivery
+            SET available_at=clock_timestamp()-interval '1 second' WHERE event_id=%s""",
+            (event,))
+    second = queue.claim()
+    assert second.attempts == 2
+    assert second.idempotency_key == first.idempotency_key
+    assert queue.acknowledge(first) is False
+    with connect() as conn:
+        conn.execute("""UPDATE staff_access_notification_delivery
+            SET lease_until=clock_timestamp()-interval '1 second' WHERE event_id=%s""",
+            (event,))
+    third = queue.claim()
+    assert third.attempts == 3 and third.lease_token != second.lease_token
+    assert queue.fail(second, code="provider_unavailable") is False
+    assert queue.fail(third, code="provider_rejected", permanent=True) is True
+    assert queue.claim() is None
+    with connect() as conn:
+        assert conn.execute("""SELECT state, attempts, last_error_code
+            FROM staff_access_notification_delivery""").fetchone() == (
+                "dead", 3, "provider_rejected")
+
+
+def test_access_delivery_expired_final_attempt_is_terminal(access_delivery_environment):
+    queue, connect, _, event, _ = access_delivery_environment
+    queue.enqueue()
+    claim = queue.claim()
+    with connect() as conn:
+        conn.execute("""UPDATE staff_access_notification_delivery
+            SET attempts=10, lease_until=clock_timestamp()-interval '1 second'
+            WHERE event_id=%s""", (event,))
+    assert queue.claim() is None
+    assert queue.acknowledge(claim) is False
+    with connect() as conn:
+        assert conn.execute("""SELECT state, attempts, last_error_code
+            FROM staff_access_notification_delivery""").fetchone() == (
+                "dead", 10, "lease_expired")
+
+
+def test_access_delivery_outside_login_and_branchless_logout(environment):
+    from backend.app.staff_access_notification_queue import AccessDeliveryQueue
+    from backend.app.staff_attendance_access_store import AttendanceAccessStore
+    _, connect, staff, branch, position = environment
+    now = datetime.now(timezone.utc)
+    store = AttendanceAccessStore(connect)
+    outside = Position(position.latitude+0.001, position.longitude, 2)
+    login_id, logout_id = uuid4(), uuid4()
+    assert store.record_login(staff, login_id, branch, outside,
+        captured_at=now) == (LocationState.OUTSIDE, True)
+    owner = VerifiedStaffIdentity(uuid4(), staff.company_id, "COMPANY_OWNER",
+                                  True, frozenset(), True)
+    assert store.record_logout(owner, logout_id)
+    queue = AccessDeliveryQueue(connect, company_id=staff.company_id,
+                                 release_at=now-timedelta(seconds=1))
+    assert queue.enqueue() == 2
+    claims = [queue.claim(), queue.claim()]
+    by_id = {item.event_id: item for item in claims}
+    assert by_id[login_id].event_type == "reported_login_outside"
+    assert by_id[login_id].branch_id == branch.branch_id
+    assert by_id[logout_id].event_type == "staff_logged_out"
+    assert by_id[logout_id].branch_id is None
+    assert queue.claim() is None
