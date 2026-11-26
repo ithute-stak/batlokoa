@@ -254,3 +254,91 @@ def test_monitor_policy_errors(monitoring, monkeypatch, code, status):
     response = post(client, "monitor", payload(session_id=7))
     assert response.status_code == status
     assert response.json()["code"] == (code if status != 503 else "MONITOR_UNAVAILABLE")
+
+
+OWNER_ALERTS = "/api/v1/staff/manage/attendance/alerts"
+
+
+@pytest.fixture
+def owner_inbox(configured, monkeypatch):
+    from backend.app import owner_staff_management_routes as owner_routes
+    from backend.app.owner_attendance_inbox import OwnerAttendanceInbox
+    app, client, _, _ = configured
+    owner = VerifiedStaffIdentity(uuid4(), COMPANY, "COMPANY_OWNER", True,
+                                  frozenset(), True)
+    identity = [owner]
+    calls = []
+    monkeypatch.setattr(owner_routes, "_config", routes._config)
+
+    def verifier(**kwargs):
+        assert kwargs["allow_unverified_company_owner"] is False
+        return SimpleNamespace(verify=lambda token: identity[0])
+
+    monkeypatch.setattr(owner_routes, "LoanHubStaffVerifier", verifier)
+    inbox = OwnerAttendanceInbox(lambda: pytest.fail("Unexpected database access"))
+    app.state.owner_attendance_inbox = inbox
+
+    def read(staff, **kwargs):
+        calls.append((staff, kwargs))
+        return {"alerts": [], "next_after": kwargs["after"], "has_more": False}
+
+    monkeypatch.setattr(inbox, "read", read)
+    return app, client, owner, identity, calls
+
+
+def test_owner_inbox_disabled_by_default(owner_inbox):
+    app, client, _, _, calls = owner_inbox
+    assert client.get(OWNER_ALERTS).status_code == 503
+    app.state.owner_attendance_inbox_enabled = True
+    app.state.staff_attendance_enabled = False
+    assert client.get(OWNER_ALERTS).status_code == 503
+    assert calls == []
+
+
+def test_owner_inbox_uses_verified_scope(owner_inbox):
+    app, client, owner, _, calls = owner_inbox
+    app.state.owner_attendance_inbox_enabled = True
+    response = client.get(OWNER_ALERTS, params={
+        "after": 5, "limit": 2, "company_id": str(uuid4())})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {"alerts": [], "next_after": 5, "has_more": False}
+    assert calls == [(owner, {"after": 5, "limit": 2})]
+
+
+def test_owner_inbox_rejects_nonowners_and_cross_site(owner_inbox):
+    app, client, owner, identity, calls = owner_inbox
+    app.state.owner_attendance_inbox_enabled = True
+    assert client.get(OWNER_ALERTS, headers={"Origin": "https://foreign.test"}).status_code == 403
+    assert client.get(OWNER_ALERTS, headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    identity[0] = STAFF
+    assert client.get(OWNER_ALERTS).status_code == 403
+    identity[0] = VerifiedStaffIdentity(owner.user_id, COMPANY, "COMPANY_ADMIN",
+                                        True, frozenset(), True)
+    assert client.get(OWNER_ALERTS).status_code == 403
+    identity[0] = owner
+    client.cookies.clear()
+    assert client.get(OWNER_ALERTS).status_code == 401
+    assert calls == []
+
+
+@pytest.mark.parametrize("query", ["after=-1", "after=9223372036854775808",
+                                    "limit=0", "limit=101"])
+def test_owner_inbox_rejects_invalid_pagination(owner_inbox, query):
+    app, client, _, _, calls = owner_inbox
+    app.state.owner_attendance_inbox_enabled = True
+    assert client.get(OWNER_ALERTS + "?" + query).status_code == 422
+    assert calls == []
+
+
+@pytest.mark.parametrize("role,active,wide", [
+    ("COMPANY_ADMIN", True, True), ("LOAN_OFFICER", True, False),
+    ("COMPANY_OWNER", False, True), ("COMPANY_OWNER", True, False),
+])
+def test_owner_inbox_storage_requires_active_owner(role, active, wide):
+    from backend.app.owner_attendance_inbox import OwnerAttendanceInbox
+    from backend.app.staff_authorization import StaffAccessDenied
+    inbox = OwnerAttendanceInbox(lambda: pytest.fail("Unauthorized storage access"))
+    identity = VerifiedStaffIdentity(uuid4(), COMPANY, role, active, frozenset(), wide)
+    with pytest.raises(StaffAccessDenied):
+        inbox.read(identity)
