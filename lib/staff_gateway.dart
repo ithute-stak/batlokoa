@@ -335,6 +335,16 @@ abstract class OwnerAccessInboxGateway {
 }
 
 
+class OwnerRosterEmployee {
+  final String employeeId, role;
+  final String? name;
+  const OwnerRosterEmployee(this.employeeId, this.role, this.name);
+}
+
+abstract class OwnerRosterEmployeeGateway {
+  Future<List<OwnerRosterEmployee>> rosterEmployees();
+}
+
 class OwnerWorkRosterRow {
   final String employeeId, recordedBy;
   final bool scheduledToWork;
@@ -385,7 +395,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -1020,6 +1030,45 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
     return OwnerAccessEventPage(List.unmodifiable(events), next);
   }
 
+
+  @override
+  Future<List<OwnerRosterEmployee>> rosterEmployees() async {
+    final request = http.Request('GET',
+        _url('/api/v1/staff/manage/attendance/work-roster/employees'))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Roster employee directory unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['employees'] is! List) {
+      throw const FormatException('Invalid roster employee directory');
+    }
+    final raw = data['employees'] as List;
+    if (raw.length >= 100) {
+      throw const FormatException('Incomplete roster employee directory');
+    }
+    final employees = <OwnerRosterEmployee>[];
+    String? previous;
+    for (final row in raw) {
+      if (row is! Map<String, dynamic> || !_rosterUuid(row['employee_id']) ||
+          !const {'COMPANY_OWNER', 'COMPANY_ADMIN', 'BRANCH_MANAGER',
+            'LOAN_OFFICER', 'CREDIT_ANALYST'}.contains(row['role']) ||
+          !row.containsKey('name')) {
+        throw const FormatException('Invalid roster employee');
+      }
+      final id = row['employee_id'] as String;
+      final name = row['name'];
+      if ((previous != null && id.compareTo(previous) <= 0) ||
+          (name != null && (name is! String || name.length > 200 || name.trim().isEmpty))) {
+        throw const FormatException('Invalid roster employee identity or name');
+      }
+      employees.add(OwnerRosterEmployee(id, row['role'] as String, name as String?));
+      previous = id;
+    }
+    return List.unmodifiable(employees);
+  }
 
   static bool _rosterUuid(Object? value) => value is String &&
       RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$').hasMatch(value);
