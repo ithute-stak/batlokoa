@@ -12,6 +12,7 @@ import 'staff_monitoring_scheduler.dart';
 import 'owner_attendance_alerts_screen.dart';
 import 'owner_access_events_screen.dart';
 import 'owner_work_roster_screen.dart';
+import 'staff_notification_screen.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
 class StaffWorkspaceShell extends StatefulWidget {
@@ -151,6 +152,18 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
   bool get canManageWorkRoster => _ownerRosterReleased && owner &&
       widget.gateway is OwnerWorkRosterGateway &&
       widget.gateway is OwnerRosterEmployeeGateway;
+
+  static const _notificationInboxReleased =
+      bool.fromEnvironment('STAFF_ATTENDANCE_INBOX_ENABLED');
+  bool get canViewNotifications => _notificationInboxReleased &&
+      widget.gateway is StaffNotificationGateway;
+
+  void openNotifications() {
+    if (!canViewNotifications || widget.busy || !_foreground) return;
+    open(StaffNotificationScreen(
+      gateway: widget.gateway as StaffNotificationGateway,
+    ));
+  }
 
   void openWorkRoster() {
     if (!canManageWorkRoster || widget.busy || !_foreground) return;
@@ -307,6 +320,13 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
     ]),
     const SizedBox(height: 12),
     actionGrid([
+      if (canViewNotifications)
+        KeyedSubtree(key: const Key('staff-open-notifications'),
+          child: BfsActionPanel(icon: Icons.notifications_outlined,
+            title: 'Attendance notifications',
+            description: owner ? 'Review attendance and access alerts'
+                : 'View your clock-in reminders',
+            onPressed: openNotifications)),
       if (canManageWorkRoster)
         KeyedSubtree(key: const Key('owner-open-work-roster'),
           child: BfsActionPanel(icon: Icons.calendar_month_outlined,
