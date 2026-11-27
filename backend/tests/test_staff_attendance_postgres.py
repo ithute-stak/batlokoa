@@ -37,7 +37,8 @@ def environment():
                 for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql",
                              "staff_attendance_monitor_schema.sql", "staff_attendance_notification_schema.sql",
                              "staff_attendance_access_events_schema.sql", "staff_access_notification_schema.sql",
-                             "staff_morning_work_roster_schema.sql", "staff_morning_reminder_schema.sql"):
+                             "staff_morning_work_roster_schema.sql", "staff_morning_reminder_schema.sql",
+                             "staff_attendance_notification_inbox_schema.sql"):
                     conn.execute(Path("backend/app", name).read_text())
             company, branch_id = uuid4(), uuid4()
             branch = ActiveBranch(company, branch_id, True)
@@ -549,3 +550,48 @@ def test_morning_roster_database_eligibility_and_scope(environment):
     directory.rows = [staff, replace(coworker, company_id=other_owner.company_id)]
     with pytest.raises(ValueError):
         source.candidates(company_id=company, work_date=day, limit=100)
+
+
+def test_notification_receiver_real_database(environment):
+    from backend.app.staff_attendance_notification_inbox import AttendanceNotificationInbox
+    from backend.app.staff_attendance_dispatch_worker import DispatchOutcome
+    from backend.app.staff_access_notification_queue import AccessDeliveryQueue
+    from backend.app.staff_authorization import StaffAccessDenied
+
+    _, connect, staff, _, _ = environment
+    company = staff.company_id
+    owner = VerifiedStaffIdentity(uuid4(), company, "COMPANY_OWNER", True, frozenset(), True)
+    other = VerifiedStaffIdentity(uuid4(), company, "LOAN_OFFICER", True, frozenset())
+    foreign = VerifiedStaffIdentity(owner.user_id, uuid4(), "COMPANY_OWNER", True, frozenset(), True)
+    class Directory:
+        def employees(self, *, company_id, limit):
+            assert company_id == company and limit == 100
+            return [owner, staff, other]
+    inbox = AttendanceNotificationInbox(connect, Directory(), company_id=company)
+    event = uuid4()
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
+    with connect() as conn:
+        conn.execute("""INSERT INTO staff_attendance_access_events
+            (event_id,company_id,employee_id,event_type)
+            VALUES (%s,%s,%s,'staff_logged_out')""", (event,company,staff.user_id))
+    queue = AccessDeliveryQueue(connect, company_id=company, release_at=cutoff)
+    assert queue.enqueue() == 1
+    claim = queue.claim()
+    assert claim.event_id == event
+    assert inbox.accept_owner_event(event_id=event, access=True, key="wrong") is DispatchOutcome.REJECTED
+    for _ in range(2):
+        assert inbox.accept_owner_event(event_id=event, access=True,
+                    key=claim.idempotency_key) is DispatchOutcome.ACCEPTED
+    assert queue.acknowledge(claim)
+    rows = inbox.read_notifications(owner)["notifications"]
+    assert len(rows) == 1
+    assert rows[0]["employee_id"] == str(staff.user_id)
+    assert rows[0]["event_type"] == "staff_logged_out"
+    assert inbox.read_notifications(staff)["notifications"] == []
+    assert inbox.read_notifications(other)["notifications"] == []
+    former = VerifiedStaffIdentity(owner.user_id, company, "LOAN_OFFICER", True, frozenset())
+    assert inbox.read_notifications(former)["notifications"] == []
+    with pytest.raises(StaffAccessDenied):
+        inbox.read_notifications(foreign)
+    assert inbox.accept_owner_event(event_id=uuid4(), access=True,
+                    key=claim.idempotency_key) is DispatchOutcome.REJECTED
