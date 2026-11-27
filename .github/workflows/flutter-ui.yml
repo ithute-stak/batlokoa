@@ -148,3 +148,66 @@ jobs:
           name: batlokoa-web-preview
           path: build/web
           retention-days: 7
+
+  attendance-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter create . --platforms=web --no-pub
+      - run: flutter pub get
+      - name: Build attendance-enabled staging UI
+        run: |
+          flutter build web --release \
+            --dart-define=STAFF_LOGIN_LOCATION_ENABLED=true \
+            --dart-define=STAFF_MONITORING_ENABLED=true \
+            --dart-define=OWNER_ATTENDANCE_ALERTS_ENABLED=true \
+            --dart-define=OWNER_ACCESS_INBOX_ENABLED=true \
+            --dart-define=OWNER_WORK_ROSTER_ENABLED=true \
+            --dart-define=STAFF_ATTENDANCE_INBOX_ENABLED=true
+      - name: Install browser probe
+        run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium
+      - name: Verify same-origin browser geolocation and safe backend defaults
+        run: |
+          set -euo pipefail
+          export BATLOKOA_STAGING_TLS_DIR="$(mktemp -d)"
+          export BATLOKOA_STAGING_TLS_PORT=18443
+          trap 'docker compose -f compose.staging.https.yml -f compose.attendance.browser.staging.yml down --remove-orphans --volumes; rm -rf "$BATLOKOA_STAGING_TLS_DIR"' EXIT
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj "/CN=localhost" -keyout "$BATLOKOA_STAGING_TLS_DIR/privkey.pem" \
+            -out "$BATLOKOA_STAGING_TLS_DIR/fullchain.pem" >/dev/null 2>&1
+          chmod 755 "$BATLOKOA_STAGING_TLS_DIR"
+          chmod 644 "$BATLOKOA_STAGING_TLS_DIR/"*.pem
+          docker compose -f compose.staging.https.yml -f compose.attendance.browser.staging.yml config --quiet
+          docker compose -f compose.staging.https.yml -f compose.attendance.browser.staging.yml up -d --build
+          bash scripts/smoke_staging_https.sh
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              context = browser.new_context(ignore_https_errors=True,
+                  permissions=["geolocation"],
+                  geolocation={"latitude": -29.31, "longitude": 27.48, "accuracy": 2})
+              page = context.new_page()
+              response = page.goto("https://127.0.0.1:18443/", wait_until="domcontentloaded")
+              assert response.status == 200
+              assert "geolocation=(self)" in response.headers.get("permissions-policy", "")
+              assert page.evaluate("window.isSecureContext")
+              position = page.evaluate("""() => new Promise((resolve, reject) =>
+                navigator.geolocation.getCurrentPosition(
+                  p => resolve([p.coords.latitude,p.coords.longitude,p.coords.accuracy]),
+                  e => reject(new Error(e.message)), {timeout:5000,enableHighAccuracy:true}))""")
+              assert abs(position[0] + 29.31) < 0.000001
+              assert abs(position[1] - 27.48) < 0.000001
+              assert position[2] == 2
+              assert page.evaluate("""async () =>
+                (await fetch('/api/v1/staff/attendance/status')).status""") == 503
+              context.close()
+              browser.close()
+          PY
