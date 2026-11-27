@@ -595,3 +595,51 @@ def test_notification_receiver_real_database(environment):
         inbox.read_notifications(foreign)
     assert inbox.accept_owner_event(event_id=uuid4(), access=True,
                     key=claim.idempotency_key) is DispatchOutcome.REJECTED
+
+
+def test_runtime_grants_effective_privileges(environment):
+    """Use temporary non-login roles; never modify real deployment roles."""
+    _, connect, staff, _, _ = environment
+    gateway = "test_gateway_" + uuid4().hex
+    worker = "test_worker_" + uuid4().hex
+    roles = (gateway, worker)
+    with connect() as conn:
+        schema = conn.execute("SELECT current_schema()").fetchone()[0]
+        for role in roles:
+            conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN NOINHERIT").format(sql.Identifier(role)))
+        conn.commit()
+        try:
+            grants = Path("backend/app/staff_attendance_runtime_grants.sql").read_text()
+            grants = grants.replace("SCHEMA public TO", f"SCHEMA {schema} TO")
+            grants = grants.replace("batlokoa_attendance_gateway", gateway)
+            grants = grants.replace("batlokoa_attendance_worker", worker)
+            conn.execute(grants)
+            conn.commit()
+            with conn.transaction():
+                conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(gateway)))
+                conn.execute("""INSERT INTO staff_attendance_access_events
+                    (event_id,company_id,employee_id,event_type)
+                    VALUES (%s,%s,%s,'staff_logged_out')""", (uuid4(),staff.company_id,staff.user_id))
+                assert conn.execute("SELECT count(*) FROM staff_attendance_access_events").fetchone()[0] == 1
+                for statement in ("DELETE FROM staff_attendance_access_events",
+                                  "UPDATE staff_branch_location_history SET radius_m=10",
+                                  "UPDATE staff_attendance_notification_delivery SET state='dead'"):
+                    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                        with conn.transaction():
+                            conn.execute(statement)
+            with conn.transaction():
+                conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(worker)))
+                assert conn.execute("SELECT count(*) FROM staff_attendance_access_events").fetchone()[0] == 1
+                for statement in ("DELETE FROM staff_attendance_access_events",
+                                  "SELECT * FROM staff_branch_location_history",
+                                  "UPDATE staff_attendance_sessions SET clocked_out_at=clock_timestamp()",
+                                  "SELECT * FROM staff_attendance_notification_inbox"):
+                    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                        with conn.transaction():
+                            conn.execute(statement)
+        finally:
+            conn.rollback()
+            for role in roles:
+                conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role)))
+                conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
+            conn.commit()
