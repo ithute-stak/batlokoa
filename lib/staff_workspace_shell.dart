@@ -158,6 +158,57 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
   bool get canViewNotifications => _notificationInboxReleased &&
       widget.gateway is StaffNotificationGateway;
 
+  bool get canOpenAttendanceCenter => owner &&
+      (canViewNotifications || canManageWorkRoster ||
+       canViewAccessEvents || canViewAttendanceAlerts || canAttend);
+
+  void openAttendanceCenter() {
+    if (!canOpenAttendanceCenter || widget.busy || !_foreground) return;
+    open(Scaffold(
+      appBar: AppBar(title: const Text('Attendance management')),
+      body: SafeArea(child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: ListView(padding: BfsResponsive.pagePadding(context), children: [
+          const BfsSectionTitle(title: 'Attendance management',
+            eyebrow: 'COMPANY OWNER',
+            subtitle: 'Working schedules, access events and attendance notifications.'),
+          const SizedBox(height: 16),
+          const Text('Location reports are device readings, not proof of physical '
+            'presence. Signing out does not clock an employee out.'),
+          const SizedBox(height: 16),
+          if (canViewNotifications)
+            BfsActionPanel(icon: Icons.notifications_outlined,
+              title: 'Notification inbox', description: 'Review your attendance notifications',
+              onPressed: openNotifications),
+          if (canViewAttendanceAlerts) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.notifications_active_outlined,
+              title: 'Perimeter alerts', description: 'Review reported exits and returns',
+              onPressed: openAttendanceAlerts),
+          ],
+          if (canViewAccessEvents) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.login,
+              title: 'Access history', description: 'Review outside-office logins and sign-outs',
+              onPressed: openAccessEvents),
+          ],
+          if (canManageWorkRoster) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.calendar_month_outlined,
+              title: 'Working schedules', description: 'Manage scheduled workdays',
+              onPressed: openWorkRoster),
+          ],
+          if (canAttend) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.access_time_rounded,
+              title: 'My attendance', description: 'Manage your own clock-in and clock-out',
+              onPressed: openAttendance),
+          ],
+        ]),
+      ))),
+    ));
+  }
+
   void openNotifications() {
     if (!canViewNotifications || widget.busy || !_foreground) return;
     open(StaffNotificationScreen(
@@ -320,6 +371,12 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
     ]),
     const SizedBox(height: 12),
     actionGrid([
+      if (canOpenAttendanceCenter)
+        KeyedSubtree(key: const Key('owner-open-attendance-center'),
+          child: BfsActionPanel(icon: Icons.dashboard_outlined,
+            title: 'Attendance management',
+            description: 'Schedules, alerts and attendance tools in one place',
+            onPressed: openAttendanceCenter)),
       if (canViewNotifications)
         KeyedSubtree(key: const Key('staff-open-notifications'),
           child: BfsActionPanel(icon: Icons.notifications_outlined,
