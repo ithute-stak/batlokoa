@@ -335,6 +335,30 @@ abstract class OwnerAccessInboxGateway {
 }
 
 
+class StaffAttendanceNotification {
+  final String key, employeeId, eventType;
+  final DateTime observedAt, createdAt;
+  final DateTime? expiresAt, readAt;
+  const StaffAttendanceNotification(this.key, this.employeeId, this.eventType,
+      this.observedAt, this.createdAt, this.expiresAt, this.readAt);
+}
+
+class StaffNotificationCursor {
+  final String createdAt, key;
+  const StaffNotificationCursor(this.createdAt, this.key);
+}
+
+class StaffNotificationPage {
+  final List<StaffAttendanceNotification> notifications;
+  final StaffNotificationCursor? nextBefore;
+  const StaffNotificationPage(this.notifications, this.nextBefore);
+}
+
+abstract class StaffNotificationGateway {
+  Future<StaffNotificationPage> attendanceNotifications(
+      {StaffNotificationCursor? before, int limit = 50});
+}
+
 class OwnerRosterEmployee {
   final String employeeId, role;
   final String? name;
@@ -395,7 +419,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway, StaffNotificationGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -1068,6 +1092,86 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       previous = id;
     }
     return List.unmodifiable(employees);
+  }
+
+
+  @override
+  Future<StaffNotificationPage> attendanceNotifications(
+      {StaffNotificationCursor? before, int limit = 50}) async {
+    bool validKey(Object? value) => value is String && value.isNotEmpty &&
+        value.length <= 200 && RegExp(r'^[a-z0-9:-]+$').hasMatch(value);
+    if (limit < 1 || limit > 100 || (before != null &&
+        (!validKey(before.key) || DateTime.tryParse(before.createdAt)?.isUtc != true))) {
+      throw ArgumentError('Invalid notification cursor');
+    }
+    final request = http.Request('GET', _url('/api/v1/staff/attendance/notifications')
+      .replace(queryParameters: {'limit': '$limit',
+        if (before != null) 'before_at': before.createdAt,
+        if (before != null) 'before_key': before.key}))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Attendance inbox unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['notifications'] is! List ||
+        !data.containsKey('next_before')) {
+      throw const FormatException('Invalid notification page');
+    }
+    final rows = data['notifications'] as List;
+    if (rows.length > limit) throw const FormatException('Oversized notification page');
+    DateTime timestamp(Object? value) {
+      if (value is! String) throw const FormatException('Invalid notification timestamp');
+      final parsed = DateTime.parse(value);
+      if (!parsed.isUtc) throw const FormatException('Unverified notification timezone');
+      return parsed;
+    }
+    final notifications = <StaffAttendanceNotification>[];
+    final seen = <String>{};
+    DateTime? previous = before == null ? null : timestamp(before.createdAt);
+    String? previousKey = before?.key;
+    String? lastRaw;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic> || !validKey(row['key']) ||
+          !_rosterUuid(row['employee_id']) ||
+          !const {'morning_reminder', 'reported_outside_perimeter',
+            'reported_inside_perimeter', 'reported_login_outside',
+            'staff_logged_out'}.contains(row['event_type']) ||
+          !row.containsKey('expires_at') || !row.containsKey('read_at')) {
+        throw const FormatException('Invalid notification fields');
+      }
+      final key = row['key'] as String;
+      final kind = row['event_type'] as String;
+      final employee = row['employee_id'] as String;
+      final observed = timestamp(row['observed_at']);
+      final created = timestamp(row['created_at']);
+      final expiry = row['expires_at'] == null ? null : timestamp(row['expires_at']);
+      final read = row['read_at'] == null ? null : timestamp(row['read_at']);
+      if (!seen.add(key) || observed.isAfter(created) ||
+          ((kind == 'morning_reminder') != (expiry != null)) ||
+          (expiry != null && !expiry.isAfter(observed)) ||
+          (read != null && read.isBefore(created)) ||
+          (previous != null && (created.isAfter(previous) ||
+            (created == previous && key.compareTo(previousKey!) >= 0)))) {
+        throw const FormatException('Invalid notification sequence');
+      }
+      notifications.add(StaffAttendanceNotification(key, employee, kind,
+          observed, created, expiry, read));
+      previous = created;
+      previousKey = key;
+      lastRaw = row['created_at'] as String;
+    }
+    final cursor = data['next_before'];
+    StaffNotificationCursor? next;
+    if (cursor != null) {
+      if (rows.length != limit || cursor is! Map<String, dynamic> ||
+          cursor['created_at'] != lastRaw || cursor['key'] != previousKey) {
+        throw const FormatException('Invalid notification page cursor');
+      }
+      next = StaffNotificationCursor(lastRaw!, previousKey!);
+    }
+    return StaffNotificationPage(List.unmodifiable(notifications), next);
   }
 
   static bool _rosterUuid(Object? value) => value is String &&
