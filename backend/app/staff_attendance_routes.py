@@ -1,6 +1,7 @@
 """Opt-in attendance API; disabled unless explicitly configured."""
 import secrets
-from datetime import date, datetime
+from datetime import date, datetime, time
+from typing import Literal
 from uuid import UUID
 
 import httpx
@@ -16,6 +17,8 @@ from .staff_registration_read_origin import safe_staff_read_origin
 from .staff_login_routes import COOKIE, CSRF_COOKIE, NO_STORE, _config, _same_origin
 from .staff_authorization import StaffAccessDenied, VerifiedStaffIdentity
 from .staff_morning_work_roster_store import MorningWorkRosterStore
+from .staff_attendance_notification_inbox import AttendanceNotificationInbox
+from .staff_morning_reminder import LESOTHO
 from .staff_attendance import AttendanceAction, AttendanceRejected
 from .staff_attendance_store import AttendanceStore
 from .staff_attendance_monitor_store import AttendanceMonitorStore
@@ -478,3 +481,107 @@ def owner_work_roster_employees(request: Request):
     except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
         return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
     return JSONResponse({"employees": employees}, headers=NO_STORE)
+
+
+# Internal relay endpoints use a dedicated company-bound credential, not staff
+# cookies or the LoanHub directory credential. The inbox derives recipients
+# and event content independently from persistent records.
+class RelayMonitorEvent(BaseModel):
+    company_id: UUID
+    alert_id: int = Field(strict=True, gt=0, lt=2**63)
+    employee_id: UUID
+    branch_id: UUID
+    event_type: Literal["reported_outside_perimeter", "reported_inside_perimeter"]
+    observed_at: datetime
+    model_config = {"extra": "forbid"}
+
+
+class RelayAccessEvent(BaseModel):
+    company_id: UUID
+    event_id: UUID
+    employee_id: UUID
+    branch_id: UUID | None
+    event_type: Literal["reported_login_outside", "staff_logged_out"]
+    observed_at: datetime
+    model_config = {"extra": "forbid"}
+
+
+class RelayMorningEvent(BaseModel):
+    company_id: UUID
+    employee_id: UUID
+    work_date: date
+    expires_at: datetime
+    model_config = {"extra": "forbid"}
+
+
+def _relay_context(request, company_id):
+    state = request.app.state
+    inbox = getattr(state, "staff_attendance_notification_inbox", None)
+    token = getattr(state, "staff_attendance_receiver_token", None)
+    scope = getattr(state, "staff_attendance_receiver_company_id", None)
+    if (getattr(state, "staff_attendance_enabled", False) is not True
+            or getattr(state, "staff_attendance_receiver_enabled", False) is not True
+            or not isinstance(inbox, AttendanceNotificationInbox)
+            or not isinstance(scope, UUID) or inbox._company != scope
+            or not isinstance(token, str) or not 32 <= len(token) <= 4096
+            or any(not 33 <= ord(c) <= 126 for c in token)):
+        return None, fail("ATTENDANCE_RECEIVER_DISABLED", 503)
+    authorization = request.headers.get("authorization", "")
+    if (not authorization.isascii() or len(authorization) > 4103
+            or not secrets.compare_digest(authorization, "Bearer " + token)):
+        return None, fail("SERVICE_AUTHENTICATION_REQUIRED", 401)
+    if scope != company_id:
+        return None, fail("COMPANY_SCOPE_DENIED", 403)
+    return inbox, None
+
+
+def _relay_receipt(company_id, key, outcome, employee_id=None):
+    result = {"company_id": str(company_id), "idempotency_key": key,
+              "status": outcome.value}
+    if employee_id is not None:
+        result["employee_id"] = str(employee_id)
+    return JSONResponse(result, status_code=200, headers=NO_STORE)
+
+
+def _receive_owner(payload, request, *, access):
+    inbox, denial = _relay_context(request, payload.company_id)
+    if denial is not None:
+        return denial
+    if payload.observed_at.utcoffset() is None:
+        return fail("INVALID_EVENT_TIME", 422)
+    key = request.headers.get("idempotency-key", "")
+    event_id = payload.event_id if access else payload.alert_id
+    # Employee, branch, event kind and observed time in the request are not
+    # authoritative; the inbox retrieves event content from its source tables.
+    try:
+        outcome = inbox.accept_owner_event(event_id=event_id, access=access, key=key)
+    except (psycopg.Error, ValueError, TypeError):
+        return fail("ATTENDANCE_RECEIVER_UNAVAILABLE", 503)
+    return _relay_receipt(payload.company_id, key, outcome)
+
+
+@router.post("/api/v1/attendance/notifications", include_in_schema=False)
+def receive_monitor_notification(payload: RelayMonitorEvent, request: Request):
+    return _receive_owner(payload, request, access=False)
+
+
+@router.post("/api/v1/attendance/access-notifications", include_in_schema=False)
+def receive_access_notification(payload: RelayAccessEvent, request: Request):
+    return _receive_owner(payload, request, access=True)
+
+
+@router.post("/api/v1/attendance/morning-reminders", include_in_schema=False)
+def receive_morning_notification(payload: RelayMorningEvent, request: Request):
+    inbox, denial = _relay_context(request, payload.company_id)
+    if denial is not None:
+        return denial
+    expected = datetime.combine(payload.work_date, time(7, 15), tzinfo=LESOTHO)
+    if payload.expires_at.utcoffset() is None or payload.expires_at != expected:
+        return fail("INVALID_REMINDER_EXPIRY", 422)
+    key = request.headers.get("idempotency-key", "")
+    try:
+        outcome = inbox.accept_morning(employee_id=payload.employee_id,
+                                       work_date=payload.work_date, key=key)
+    except (psycopg.Error, ValueError, TypeError):
+        return fail("ATTENDANCE_RECEIVER_UNAVAILABLE", 503)
+    return _relay_receipt(payload.company_id, key, outcome, payload.employee_id)
