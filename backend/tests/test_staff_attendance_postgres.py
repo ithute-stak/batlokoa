@@ -36,7 +36,8 @@ def environment():
             with connect() as conn:
                 for name in ("staff_branch_location_schema.sql", "staff_attendance_schema.sql",
                              "staff_attendance_monitor_schema.sql", "staff_attendance_notification_schema.sql",
-                             "staff_attendance_access_events_schema.sql", "staff_access_notification_schema.sql"):
+                             "staff_attendance_access_events_schema.sql", "staff_access_notification_schema.sql",
+                             "staff_morning_work_roster_schema.sql", "staff_morning_reminder_schema.sql"):
                     conn.execute(Path("backend/app", name).read_text())
             company, branch_id = uuid4(), uuid4()
             branch = ActiveBranch(company, branch_id, True)
@@ -489,3 +490,62 @@ def test_access_delivery_outside_login_and_branchless_logout(environment):
     assert by_id[logout_id].event_type == "staff_logged_out"
     assert by_id[logout_id].branch_id is None
     assert queue.claim() is None
+
+
+def test_morning_roster_database_eligibility_and_scope(environment):
+    from dataclasses import replace
+    from uuid import UUID
+    from backend.app.staff_morning_work_roster_store import MorningWorkRosterStore
+    from backend.app.staff_morning_roster_source import DatabaseMorningRosterSource
+    from backend.app.staff_morning_reminder_queue import MorningReminderClaim
+    from backend.app.staff_authorization import StaffAccessDenied
+
+    _, connect, staff, _, _ = environment
+    company = staff.company_id
+    owner = VerifiedStaffIdentity(uuid4(), company, "COMPANY_OWNER", True, frozenset(), True)
+    other_owner = replace(owner, company_id=uuid4())
+    coworker = replace(staff, user_id=uuid4())
+    off = replace(staff, user_id=uuid4())
+    inactive = replace(staff, user_id=uuid4())
+    unknown = replace(staff, user_id=uuid4())
+    with connect() as conn:
+        day = conn.execute("SELECT (clock_timestamp() AT TIME ZONE 'Africa/Maseru')::date").fetchone()[0]
+    roster = MorningWorkRosterStore(connect)
+    for member, working in [(staff, True), (coworker, True), (off, False), (inactive, True)]:
+        assert roster.set_day(owner, member, work_date=day, scheduled_to_work=working)
+    assert not roster.set_day(owner, staff, work_date=day, scheduled_to_work=True)
+    with pytest.raises(StaffAccessDenied):
+        roster.set_day(other_owner, staff, work_date=day, scheduled_to_work=True)
+    assert roster.read_day(other_owner, work_date=day)["rows"] == []
+    first = roster.read_day(owner, work_date=day, limit=2)
+    second = roster.read_day(owner, work_date=day, after=UUID(first["next_after"]), limit=2)
+    assert len(first["rows"]) == len(second["rows"]) == 2
+    assert second["next_after"] is None
+    assert len({row["employee_id"] for row in first["rows"] + second["rows"]}) == 4
+
+    class Directory:
+        rows = [staff, coworker, off, replace(inactive, active=False), unknown]
+        def employees(self, *, company_id, limit):
+            assert company_id == company and limit == 100
+            return self.rows
+
+    directory = Directory()
+    source = DatabaseMorningRosterSource(connect, directory, company_id=company)
+    record(environment)
+    rows = {row.employee_id: row for row in source.candidates(company_id=company, work_date=day, limit=100)}
+    assert rows[staff.user_id].already_clocked_in is True
+    assert rows[coworker.user_id].already_clocked_in is False
+    assert rows[off.user_id].scheduled_to_work is False
+    assert rows[inactive.user_id].active is False
+    assert unknown.user_id not in rows
+    claim = MorningReminderClaim(company, coworker.user_id, day, uuid4(), 1)
+    assert source.refresh(claim).scheduled_to_work is True
+    assert roster.set_day(owner, coworker, work_date=day, scheduled_to_work=False)
+    assert source.refresh(claim).scheduled_to_work is False
+    with pytest.raises(ValueError):
+        source.candidates(company_id=company, work_date=day, limit=1)
+    with pytest.raises(ValueError):
+        source.refresh(replace(claim, company_id=other_owner.company_id))
+    directory.rows = [staff, replace(coworker, company_id=other_owner.company_id)]
+    with pytest.raises(ValueError):
+        source.candidates(company_id=company, work_date=day, limit=100)
