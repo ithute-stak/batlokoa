@@ -747,3 +747,57 @@ def test_morning_successful_delivery_with_disposable_database_clock(environment)
     assert inbox.read_notifications(coworker)["notifications"] == []
     with connect() as conn:
         assert conn.execute("SELECT state FROM staff_morning_reminder_delivery").fetchall() == [("delivered",)]
+
+
+def test_enabled_receiver_http_to_database(environment):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.app.staff_attendance_routes import router
+    from backend.app.staff_attendance_notification_inbox import AttendanceNotificationInbox
+    from backend.app.staff_access_notification_queue import AccessDeliveryQueue
+    from backend.app.staff_access_relay_provider import AccessRelayProvider
+    from backend.app.staff_attendance_dispatch_worker import DispatchOutcome
+
+    _, connect, staff, _, _ = environment
+    company = staff.company_id
+    owner = VerifiedStaffIdentity(uuid4(), company, "COMPANY_OWNER", True, frozenset(), True)
+    class Directory:
+        def employees(self, *, company_id, limit):
+            assert company_id == company
+            return [owner, staff]
+    inbox = AttendanceNotificationInbox(connect, Directory(), company_id=company)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.staff_attendance_enabled = True
+    app.state.staff_attendance_receiver_enabled = True
+    app.state.staff_attendance_notification_inbox = inbox
+    app.state.staff_attendance_receiver_company_id = company
+    token = "a" * 48
+    app.state.staff_attendance_receiver_token = token
+    event = uuid4()
+    with connect() as conn:
+        conn.execute("""INSERT INTO staff_attendance_access_events
+            (event_id,company_id,employee_id,event_type)
+            VALUES (%s,%s,%s,'staff_logged_out')""", (event,company,staff.user_id))
+    queue = AccessDeliveryQueue(connect, company_id=company,
+                                release_at=datetime.now(timezone.utc)-timedelta(minutes=1))
+    assert queue.enqueue() == 1
+    claim = queue.claim()
+    with TestClient(app, base_url="https://relay.test") as client:
+        provider = AccessRelayProvider(origin="https://relay.test", company_id=company,
+                                       token=token, client=client)
+        payload = {"company_id":str(company),"event_id":str(event),
+                   "employee_id":str(staff.user_id),"branch_id":None,
+                   "event_type":"staff_logged_out","observed_at":claim.observed_at.isoformat()}
+        endpoint = "/api/v1/attendance/access-notifications"
+        assert client.post(endpoint,json=payload).status_code == 401
+        assert client.post(endpoint,json={**payload,"company_id":str(uuid4())},
+            headers={"Authorization":"Bearer "+token}).status_code == 403
+        app.state.staff_attendance_receiver_enabled = False
+        assert client.post(endpoint,json=payload,
+            headers={"Authorization":"Bearer "+token}).status_code == 503
+        app.state.staff_attendance_receiver_enabled = True
+        assert provider.send(claim,idempotency_key=claim.idempotency_key) is DispatchOutcome.ACCEPTED
+        assert provider.send(claim,idempotency_key=claim.idempotency_key) is DispatchOutcome.ACCEPTED
+    assert queue.acknowledge(claim)
+    assert len(inbox.read_notifications(owner)["notifications"]) == 1
