@@ -98,4 +98,75 @@ def configure_employee_pilot(app: FastAPI) -> bool:
             origin=LOANHUB_ORIGIN
         )
         app.state.staff_registration_identity_review_enabled = True
+    configure_attendance_pilot(app, company=company, env=os.environ)
+    return True
+
+
+def configure_attendance_pilot(app: FastAPI, *, company: UUID, env):
+    """Explicit staging-only attendance assembly; never migrates or sends on boot."""
+    if env.get("BATLOKOA_ATTENDANCE_MODE", "") == "":
+        return False
+    if (env.get("BATLOKOA_ATTENDANCE_MODE") != "reviewed_staging"
+            or env.get("BATLOKOA_ATTENDANCE_ACK") != "STAGING_ATTENDANCE_WRITES_AND_DISCLOSED_MONITORING"
+            or env.get("BATLOKOA_ATTENDANCE_COMPANY_ID") != str(company)):
+        raise ValueError("Explicit scoped attendance staging approval required")
+    from .staff_branch_location_store import BranchLocationStore
+    from .staff_attendance_store import AttendanceStore
+    from .staff_attendance_monitor_store import AttendanceMonitorStore
+    from .staff_attendance_access_store import AttendanceAccessStore
+    from .owner_attendance_inbox import OwnerAttendanceInbox
+    from .staff_morning_work_roster_store import MorningWorkRosterStore
+    from .staff_attendance_notification_inbox import AttendanceNotificationInbox
+    from .staff_morning_loanhub_directory import LoanHubMorningDirectory
+    import psycopg
+
+    dsn = env.get("BATLOKOA_ATTENDANCE_GATEWAY_DATABASE_URL", "")
+    if not dsn:
+        raise ValueError("Restricted attendance gateway database required")
+    def connect():
+        return psycopg.connect(dsn, connect_timeout=5,
+            options="-c statement_timeout=10000 -c lock_timeout=5000 -c search_path=public")
+
+    flags = {
+        "staff_branch_location_enabled": "BATLOKOA_ATTENDANCE_BRANCH_LOCATION",
+        "staff_attendance_monitor_enabled": "BATLOKOA_ATTENDANCE_MONITOR",
+        "staff_login_location_enabled": "BATLOKOA_ATTENDANCE_LOGIN_LOCATION",
+        "staff_logout_audit_enabled": "BATLOKOA_ATTENDANCE_LOGOUT_AUDIT",
+        "owner_attendance_inbox_enabled": "BATLOKOA_ATTENDANCE_OWNER_ALERTS",
+        "owner_access_inbox_enabled": "BATLOKOA_ATTENDANCE_OWNER_ACCESS",
+        "owner_work_roster_enabled": "BATLOKOA_ATTENDANCE_WORK_ROSTER",
+        "staff_attendance_receiver_enabled": "BATLOKOA_ATTENDANCE_RECEIVER",
+        "staff_attendance_inbox_enabled": "BATLOKOA_ATTENDANCE_INBOX",
+    }
+    values = {}
+    for attr, name in flags.items():
+        value = env.get(name, "false")
+        if value not in {"true", "false"}:
+            raise ValueError("Invalid attendance release flag")
+        values[attr] = value == "true"
+    state = app.state
+    if values["staff_attendance_receiver_enabled"] or values["staff_attendance_inbox_enabled"]:
+        directory_token = env.get("BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN", "")
+        relay_token = env.get("BATLOKOA_ATTENDANCE_RECEIVER_TOKEN", "")
+        if (not 32 <= len(directory_token) <= 4096
+                or not 32 <= len(relay_token) <= 4096
+                or directory_token == relay_token
+                or any(not 33 <= ord(c) <= 126 for c in directory_token + relay_token)):
+            raise ValueError("Distinct attendance service credentials required")
+        directory = LoanHubMorningDirectory(origin=LOANHUB_ORIGIN,
+            company_id=company, token=directory_token)
+        state.staff_attendance_notification_inbox = AttendanceNotificationInbox(
+            connect, directory, company_id=company)
+        state.staff_attendance_receiver_token = relay_token
+        state.staff_attendance_receiver_company_id = company
+
+    state.staff_branch_location_store = BranchLocationStore(connect)
+    state.staff_attendance_store = AttendanceStore(connect)
+    state.staff_attendance_monitor_store = AttendanceMonitorStore(connect)
+    state.staff_attendance_access_store = AttendanceAccessStore(connect)
+    state.owner_attendance_inbox = OwnerAttendanceInbox(connect)
+    state.staff_morning_work_roster_store = MorningWorkRosterStore(connect)
+    for attr, enabled in values.items():
+        setattr(state, attr, enabled)
+    state.staff_attendance_enabled = True
     return True
