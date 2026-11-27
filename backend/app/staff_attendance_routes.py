@@ -585,3 +585,39 @@ def receive_morning_notification(payload: RelayMorningEvent, request: Request):
     except (psycopg.Error, ValueError, TypeError):
         return fail("ATTENDANCE_RECEIVER_UNAVAILABLE", 503)
     return _relay_receipt(payload.company_id, key, outcome, payload.employee_id)
+
+
+@router.get("/api/v1/staff/attendance/notifications", include_in_schema=False)
+def staff_notifications(request: Request,
+                        limit: int = Query(50, ge=1, le=100),
+                        before_at: datetime | None = Query(None),
+                        before_key: str | None = Query(None, min_length=1, max_length=200)):
+    state = request.app.state
+    cfg = _config(request)
+    inbox = getattr(state, "staff_attendance_notification_inbox", None)
+    if (cfg is None or getattr(state, "staff_attendance_enabled", False) is not True
+            or getattr(state, "staff_attendance_inbox_enabled", False) is not True
+            or not isinstance(inbox, AttendanceNotificationInbox)):
+        return fail("ATTENDANCE_INBOX_DISABLED", 503)
+    if not safe_staff_read_origin(request, cfg.public_origin):
+        return fail("FORBIDDEN_ORIGIN", 403)
+    record = cfg.store.resolve(request.cookies.get(COOKIE, ""))
+    if record is None:
+        return fail("UNAUTHENTICATED", 401)
+    if ((before_at is None) != (before_key is None)
+            or (before_at is not None and before_at.utcoffset() is None)):
+        return fail("INVALID_INBOX_CURSOR", 422)
+    try:
+        base = cfg.verifier
+        staff = LoanHubStaffVerifier(
+            origin=cfg.loanhub_origin, public_key=base._public_key,
+            batlokoa_company_id=base._company_id, client=base._client,
+            allow_unverified_company_owner=False,
+        ).verify(record.access_token)
+        result = inbox.read_notifications(staff, limit=limit,
+                    before_at=before_at, before_key=before_key)
+    except (StaffVerificationUnavailable, StaffAccessDenied):
+        return fail("STAFF_VERIFICATION_REQUIRED", 403)
+    except (psycopg.Error, ValueError):
+        return fail("ATTENDANCE_INBOX_UNAVAILABLE", 503)
+    return JSONResponse(result, headers=NO_STORE)
