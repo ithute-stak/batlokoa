@@ -115,3 +115,45 @@ class AttendanceNotificationInbox:
                     return DispatchOutcome.REJECTED
                 self._insert(cur, employee_id, key, employee_id, "morning_reminder", now, expiry)
         return DispatchOutcome.ACCEPTED
+
+
+    def read_notifications(self, identity, *, limit=50, before_at=None, before_key=None):
+        from .staff_authorization import StaffAccessDenied
+        if (not isinstance(identity, VerifiedStaffIdentity)
+                or identity.company_id != self._company or identity.active is not True
+                or identity.role not in {"COMPANY_OWNER", "COMPANY_ADMIN", "BRANCH_MANAGER",
+                                         "LOAN_OFFICER", "CREDIT_ANALYST"}):
+            raise StaffAccessDenied("Verified active recipient required")
+        if (type(limit) is not int or not 1 <= limit <= 100
+                or (before_at is None) != (before_key is None)
+                or (before_at is not None and (not isinstance(before_at, datetime)
+                    or before_at.utcoffset() is None or not isinstance(before_key, str)
+                    or not 1 <= len(before_key) <= 200))):
+            raise ValueError("Invalid inbox pagination")
+        # Former owners must not retain access to owner-only notifications.
+        owner = identity.role == "COMPANY_OWNER" and identity.company_wide_scope is True
+        query = """SELECT idempotency_key, employee_id, event_type, observed_at,
+                       created_at, expires_at, read_at
+                    FROM staff_attendance_notification_inbox
+                    WHERE company_id=%s AND recipient_id=%s
+                      AND (expires_at IS NULL OR expires_at>clock_timestamp())
+                      AND (%s OR event_type='morning_reminder')"""
+        params = [self._company, identity.user_id, owner]
+        if before_at is not None:
+            query += " AND (created_at,idempotency_key)<(%s,%s)"
+            params.extend([before_at, before_key])
+        query += " ORDER BY created_at DESC,idempotency_key DESC LIMIT %s"
+        params.append(limit+1)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                rows = cur.fetchall()
+        page = rows[:limit]
+        return {"notifications": [
+            {"key": row[0], "employee_id": str(row[1]), "event_type": row[2],
+             "observed_at": row[3].isoformat(), "created_at": row[4].isoformat(),
+             "expires_at": row[5].isoformat() if row[5] else None,
+             "read_at": row[6].isoformat() if row[6] else None}
+            for row in page],
+            "next_before": {"created_at": page[-1][4].isoformat(), "key": page[-1][0]}
+                if len(rows)>limit else None}
