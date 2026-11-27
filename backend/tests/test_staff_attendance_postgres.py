@@ -643,3 +643,43 @@ def test_runtime_grants_effective_privileges(environment):
                 conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role)))
                 conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
             conn.commit()
+
+
+def test_morning_expired_queue_and_recipient_scope(environment):
+    from datetime import time
+    from backend.app.staff_morning_reminder import LESOTHO, ReminderCandidate
+    from backend.app.staff_morning_reminder_queue import MorningReminderQueue
+    from backend.app.staff_attendance_notification_inbox import AttendanceNotificationInbox
+    from backend.app.staff_attendance_dispatch_worker import DispatchOutcome
+
+    _, connect, staff, _, _ = environment
+    company = staff.company_id
+    yesterday = datetime.now(LESOTHO).date() - timedelta(days=1)
+    created = datetime.combine(yesterday, time(7), tzinfo=LESOTHO)
+    expiry = created + timedelta(minutes=15)
+    key = f"batlokoa:morning:{company}:{staff.user_id}:{yesterday.isoformat()}"
+    class Directory:
+        def employees(self, *, company_id, limit):
+            assert company_id == company
+            return [staff]
+    inbox = AttendanceNotificationInbox(connect, Directory(), company_id=company)
+    queue = MorningReminderQueue(connect, company_id=company)
+    assert not queue.enqueue(ReminderCandidate(company, staff.user_id, yesterday, True, True, False))
+    with connect() as conn:
+        conn.execute("""INSERT INTO staff_morning_reminder_delivery
+            (company_id,employee_id,work_date,created_at,available_at)
+            VALUES (%s,%s,%s,%s,%s)""", (company,staff.user_id,yesterday,created,created))
+        conn.execute("""INSERT INTO staff_attendance_notification_inbox
+            (company_id,recipient_id,idempotency_key,employee_id,event_type,observed_at,expires_at,created_at)
+            VALUES (%s,%s,%s,%s,'morning_reminder',%s,%s,%s)""",
+            (company,staff.user_id,key,staff.user_id,created,expiry,created))
+    assert queue.claim() is None
+    assert inbox.accept_morning(employee_id=staff.user_id,work_date=yesterday,key=key) is DispatchOutcome.REJECTED
+    assert inbox.read_notifications(staff)["notifications"] == []
+    with connect() as conn:
+        assert conn.execute("SELECT state,last_error_code FROM staff_morning_reminder_delivery").fetchone() == ("cancelled","window_closed")
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            with conn.transaction():
+                conn.execute("""INSERT INTO staff_morning_reminder_delivery
+                    (company_id,employee_id,work_date,created_at,available_at)
+                    VALUES (%s,%s,%s,%s,%s)""", (company,staff.user_id,yesterday,created,created))
