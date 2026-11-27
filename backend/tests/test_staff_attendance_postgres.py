@@ -683,3 +683,67 @@ def test_morning_expired_queue_and_recipient_scope(environment):
                 conn.execute("""INSERT INTO staff_morning_reminder_delivery
                     (company_id,employee_id,work_date,created_at,available_at)
                     VALUES (%s,%s,%s,%s,%s)""", (company,staff.user_id,yesterday,created,created))
+
+
+def test_morning_successful_delivery_with_disposable_database_clock(environment):
+    from datetime import time
+    from backend.app.staff_morning_reminder import LESOTHO
+    from backend.app.staff_morning_reminder_queue import MorningReminderQueue
+    from backend.app.staff_morning_roster_source import DatabaseMorningRosterSource
+    from backend.app.staff_morning_reminder_scheduler import MorningReminderScheduler
+    from backend.app.staff_morning_reminder_worker import MorningReminderWorker
+    from backend.app.staff_attendance_notification_inbox import AttendanceNotificationInbox
+
+    _, original_connect, staff, branch, _ = environment
+    company = staff.company_id
+    day = datetime.now(LESOTHO).date()
+    now = datetime.combine(day, time(7, 1), tzinfo=LESOTHO)
+    with original_connect() as conn:
+        schema = conn.execute("SELECT current_schema()").fetchone()[0]
+        assert schema.startswith("test_attendance_")
+        conn.execute(sql.SQL("""CREATE FUNCTION {}.clock_timestamp()
+            RETURNS timestamptz LANGUAGE sql VOLATILE AS {}
+            """).format(sql.Identifier(schema), sql.Literal(
+                "SELECT TIMESTAMPTZ '" + now.isoformat() + "'")))
+        already = uuid4()
+        for employee in (staff.user_id, already):
+            conn.execute("""INSERT INTO staff_morning_work_roster
+                (company_id,employee_id,work_date,scheduled_to_work,recorded_by)
+                VALUES (%s,%s,%s,true,%s)""", (company,employee,day,staff.user_id))
+        conn.execute("""INSERT INTO staff_attendance_sessions
+            (company_id,employee_id,branch_id,clocked_in_at)
+            VALUES (%s,%s,%s,%s)""", (company,already,branch.branch_id,now-timedelta(minutes=1)))
+
+    def connect():
+        conn = original_connect()
+        conn.execute(sql.SQL("SET search_path TO {}, pg_catalog").format(sql.Identifier(schema)))
+        conn.commit()
+        return conn
+
+    coworker = VerifiedStaffIdentity(already, company, "LOAN_OFFICER", True, frozenset())
+    class Directory:
+        def employees(self, *, company_id, limit):
+            assert company_id == company
+            return [staff, coworker]
+    directory = Directory()
+    with connect() as conn:
+        assert conn.execute("SELECT clock_timestamp()").fetchone()[0] == now
+    queue = MorningReminderQueue(connect, company_id=company)
+    source = DatabaseMorningRosterSource(connect, directory, company_id=company)
+    inbox = AttendanceNotificationInbox(connect, directory, company_id=company)
+    scheduler = MorningReminderScheduler(queue, source, company_id=company,
+                                        enabled=True, clock=lambda: now)
+    assert scheduler.tick().enqueued == 1
+    assert scheduler.tick().enqueued == 0
+    class Provider:
+        def send(self, claim, *, idempotency_key):
+            return inbox.accept_morning(employee_id=claim.employee_id,
+                work_date=claim.work_date, key=idempotency_key)
+    worker = MorningReminderWorker(queue, source, Provider(), enabled=True)
+    assert worker.run_once().accepted == 1
+    assert worker.run_once().accepted == 0
+    rows = inbox.read_notifications(staff)["notifications"]
+    assert len(rows) == 1 and rows[0]["event_type"] == "morning_reminder"
+    assert inbox.read_notifications(coworker)["notifications"] == []
+    with connect() as conn:
+        assert conn.execute("SELECT state FROM staff_morning_reminder_delivery").fetchall() == [("delivered",)]
