@@ -41,9 +41,9 @@ services:
       STAFF_ATTENDANCE_WORKER_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Verified company required}
       STAFF_ATTENDANCE_WORKER_DATABASE_URL: ${BATLOKOA_ATTENDANCE_WORKER_DATABASE_URL:-}
       STAFF_ATTENDANCE_WORKER_RELEASE_AT: ${BATLOKOA_ATTENDANCE_RELEASE_AT:-}
-      STAFF_ATTENDANCE_RELAY_ORIGIN: ${BATLOKOA_ATTENDANCE_RELAY_ORIGIN:-}
+      STAFF_ATTENDANCE_RELAY_ORIGIN: https://attendance-staging.batlokoa.co.ls
       STAFF_ATTENDANCE_RELAY_TOKEN: ${BATLOKOA_ATTENDANCE_RECEIVER_TOKEN:-}
-      STAFF_ATTENDANCE_LOANHUB_ORIGIN: https://api.loanhub.co.ls
+      STAFF_ATTENDANCE_LOANHUB_ORIGIN: https://attendance-staging-api.loanhub.co.ls
       STAFF_ATTENDANCE_DIRECTORY_TOKEN: ${BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN:-}
 # Credentials must be provided through a restricted operator environment,
 # not committed to Git. Rendered Compose config may expose secrets.
