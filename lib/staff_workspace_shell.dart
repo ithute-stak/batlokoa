@@ -12,6 +12,7 @@ import 'staff_monitoring_scheduler.dart';
 import 'owner_attendance_alerts_screen.dart';
 import 'owner_access_events_screen.dart';
 import 'owner_work_roster_screen.dart';
+import 'owner_attendance_report_screen.dart';
 import 'staff_notification_screen.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
@@ -158,8 +159,19 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
   bool get canViewNotifications => _notificationInboxReleased &&
       widget.gateway is StaffNotificationGateway;
 
+  static const _ownerReportsReleased = bool.fromEnvironment('OWNER_ATTENDANCE_REPORTS_ENABLED');
+  bool get canViewAttendanceReports => _ownerReportsReleased && owner &&
+      widget.gateway is OwnerAttendanceReportGateway;
+
+  void openAttendanceReports() {
+    if (!canViewAttendanceReports || widget.busy || !_foreground) return;
+    open(OwnerAttendanceReportScreen(
+      gateway: widget.gateway as OwnerAttendanceReportGateway,
+    ));
+  }
+
   bool get canOpenAttendanceCenter => owner &&
-      (canViewNotifications || canManageWorkRoster ||
+      (canViewAttendanceReports || canViewNotifications || canManageWorkRoster ||
        canViewAccessEvents || canViewAttendanceAlerts || canAttend);
 
   void openAttendanceCenter() {
@@ -191,6 +203,13 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
             BfsActionPanel(icon: Icons.login,
               title: 'Access history', description: 'Review outside-office logins and sign-outs',
               onPressed: openAccessEvents),
+          ],
+          if (canViewAttendanceReports) ...[
+            const SizedBox(height: 12),
+            KeyedSubtree(key: const Key('owner-open-attendance-reports'),
+              child: BfsActionPanel(icon: Icons.bar_chart,
+                title: 'Attendance reports', description: 'Review daily recorded attendance by branch',
+                onPressed: openAttendanceReports)),
           ],
           if (canManageWorkRoster) ...[
             const SizedBox(height: 12),
