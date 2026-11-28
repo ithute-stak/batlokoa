@@ -6,7 +6,8 @@ import 'staff_gateway.dart';
 class OwnerWorkRosterScreen extends StatefulWidget {
   final OwnerWorkRosterGateway roster;
   final OwnerRosterEmployeeGateway directory;
-  const OwnerWorkRosterScreen({super.key, required this.roster, required this.directory});
+  final OwnerWorkShiftGateway? shifts;
+  const OwnerWorkRosterScreen({super.key, required this.roster, required this.directory, this.shifts});
 
   @override
   State<OwnerWorkRosterScreen> createState() => _OwnerWorkRosterScreenState();
@@ -22,6 +23,8 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
   DateTime _day = _today();
   List<OwnerRosterEmployee> _employees = [];
   Map<String, bool> _schedule = {};
+  Map<String, OwnerWorkShift> _shifts = {};
+  bool _shiftFailed = false;
   bool _busy = false, _failed = false, _foreground = true;
   int _generation = 0;
   String? _notice;
@@ -45,6 +48,8 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
     setState(() {
       _employees = [];
       _schedule = {};
+      _shifts = {};
+      _shiftFailed = false;
       _busy = false;
       _failed = false;
       _notice = null;
@@ -68,6 +73,8 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
       _failed = false;
       _employees = [];
       _schedule = {};
+      _shifts = {};
+      _shiftFailed = false;
       _notice = null;
     });
     try {
@@ -89,7 +96,33 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
           throw StateError('Incomplete roster');
         }
       }
+      final shifts = <String, OwnerWorkShift>{};
+      var shiftFailed = false;
+      final shiftGateway = widget.shifts;
+      if (shiftGateway != null) {
+        try {
+          String? shiftCursor;
+          final seenShifts = <String>{};
+          for (var i = 0; i < 100; i++) {
+            final page = await shiftGateway.workShifts(date, after: shiftCursor, limit: 100);
+            if (!mounted || generation != _generation) return;
+            for (final row in page.rows) {
+              if (shifts.containsKey(row.employeeId)) throw StateError('Duplicate shift');
+              shifts[row.employeeId] = row;
+            }
+            shiftCursor = page.nextAfter;
+            if (shiftCursor == null) break;
+            if (!seenShifts.add(shiftCursor) || i == 99) throw StateError('Incomplete shifts');
+          }
+        } catch (_) {
+          shifts.clear();
+          shiftFailed = true;
+        }
+      }
+      if (!mounted || generation != _generation) return;
       setState(() {
+        _shifts = shifts;
+        _shiftFailed = shiftFailed;
         _employees = employees;
         _schedule = schedule;
         _notice = notice;
@@ -99,6 +132,8 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
         setState(() {
           _employees = [];
           _schedule = {};
+      _shifts = {};
+      _shiftFailed = false;
           _failed = true;
         });
       }
@@ -141,6 +176,44 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
       notice = 'Schedule confirmed by server.';
     } catch (_) {
       notice = 'Update not confirmed. Check the refreshed schedule before retrying.';
+    }
+    if (!mounted || generation != _generation || !_foreground) return;
+    setState(() => _busy = false);
+    await _load(notice: notice);
+  }
+
+  String _shiftTime(DateTime value) {
+    final local = value.toUtc().add(const Duration(hours: 2));
+    return local.toIso8601String().substring(11, 16);
+  }
+
+  Future<void> _editShift(OwnerRosterEmployee employee) async {
+    final gateway = widget.shifts;
+    if (gateway == null || _busy || _failed || _shiftFailed || !_foreground ||
+        _schedule[employee.employeeId] != true) return;
+    final generation = _generation;
+    final date = _date;
+    final current = _shifts[employee.employeeId];
+    final result = await showDialog<_ShiftDraft>(
+      context: context,
+      builder: (_) => _ShiftEditor(employee: employee, current: current),
+    );
+    if (!mounted || result == null || generation != _generation ||
+        !_foreground || _busy || date != _date) return;
+    final day = DateTime.parse(date);
+    final start = DateTime.utc(day.year, day.month, day.day,
+        result.start.hour - 2, result.start.minute);
+    var end = DateTime.utc(day.year, day.month, day.day,
+        result.end.hour - 2, result.end.minute);
+    if (result.overnight) end = end.add(const Duration(days: 1));
+    setState(() { _busy = true; _notice = null; });
+    String notice;
+    try {
+      await gateway.setWorkShift(employee.employeeId, date,
+          startsAt: start, endsAt: end, graceMinutes: result.grace);
+      notice = 'Shift confirmed by server.';
+    } catch (_) {
+      notice = 'Shift update not confirmed. Check the refreshed shift before retrying.';
     }
     if (!mounted || generation != _generation || !_foreground) return;
     setState(() => _busy = false);
@@ -205,6 +278,7 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
           icon: const Icon(Icons.calendar_today), label: Text(_date)),
         if (_busy) const LinearProgressIndicator(),
         if (_notice != null) Text(_notice!),
+        if (_shiftFailed) const Text('Shift details unavailable. Refresh before editing.'),
         if (_failed) const Text('Working schedule unavailable or access denied. Refresh to retry.'),
         if (!_busy && !_failed && _employees.isEmpty) const Text('No eligible employees returned.'),
         if (!_busy && !_failed && _foreground && _employees.isNotEmpty) ...[
@@ -220,16 +294,99 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
               Text(employee.role.replaceAll('_', ' ')),
               Text(_schedule[employee.employeeId] == true ? 'Working day' :
                 _schedule[employee.employeeId] == false ? 'Non-working day' : 'Schedule unknown'),
+              if (widget.shifts != null && _schedule[employee.employeeId] == true && !_shiftFailed)
+                Text(_shifts[employee.employeeId] == null ? 'Shift times not configured' :
+                  '${_shiftTime(_shifts[employee.employeeId]!.startsAt)} – ${_shiftTime(_shifts[employee.employeeId]!.endsAt)} · Grace: ${_shifts[employee.employeeId]!.graceMinutes} min'),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 OutlinedButton(onPressed: _busy || !_foreground ? null : () => _assign(employee, true),
                   child: const Text('Working')),
                 OutlinedButton(onPressed: _busy || !_foreground ? null : () => _assign(employee, false),
                   child: const Text('Non-working')),
+                if (widget.shifts != null && _schedule[employee.employeeId] == true)
+                  OutlinedButton(onPressed: _busy || !_foreground || _shiftFailed ? null : () => _editShift(employee),
+                    child: const Text('Configure shift')),
               ]),
             ],
           ))),
       ]),
     ))),
+  );
+}
+
+
+class _ShiftDraft {
+  final TimeOfDay start, end;
+  final bool overnight;
+  final int grace;
+  const _ShiftDraft(this.start, this.end, this.overnight, this.grace);
+}
+
+class _ShiftEditor extends StatefulWidget {
+  final OwnerRosterEmployee employee;
+  final OwnerWorkShift? current;
+  const _ShiftEditor({required this.employee, this.current});
+
+  @override
+  State<_ShiftEditor> createState() => _ShiftEditorState();
+}
+
+class _ShiftEditorState extends State<_ShiftEditor> {
+  TimeOfDay? _start, _end;
+  bool _overnight = false;
+  int _grace = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final shift = widget.current;
+    if (shift != null) {
+      final start = shift.startsAt.toUtc().add(const Duration(hours: 2));
+      final end = shift.endsAt.toUtc().add(const Duration(hours: 2));
+      _start = TimeOfDay(hour: start.hour, minute: start.minute);
+      _end = TimeOfDay(hour: end.hour, minute: end.minute);
+      _overnight = start.day != end.day || start.month != end.month || start.year != end.year;
+      _grace = shift.graceMinutes;
+    }
+  }
+
+  int _minutes(TimeOfDay t) => t.hour * 60 + t.minute;
+  bool get _valid {
+    if (_start == null || _end == null) return false;
+    final duration = _minutes(_end!) - _minutes(_start!) + (_overnight ? 1440 : 0);
+    return duration > _grace && duration <= 1440;
+  }
+
+  Future<void> _pick(bool start) async {
+    final value = await showTimePicker(context: context,
+        initialTime: (start ? _start : _end) ?? const TimeOfDay(hour: 8, minute: 0));
+    if (!mounted || value == null) return;
+    setState(() { if (start) { _start = value; } else { _end = value; } });
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('Configure working shift'),
+    content: Column(mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(widget.employee.name ?? widget.employee.employeeId),
+        const Text('All times are Lesotho time.'),
+        OutlinedButton(onPressed: () => _pick(true),
+          child: Text(_start == null ? 'Select starting time' : 'Start: ${_start!.format(context)}')),
+        OutlinedButton(onPressed: () => _pick(false),
+          child: Text(_end == null ? 'Select finishing time' : 'End: ${_end!.format(context)}')),
+        CheckboxListTile(contentPadding: EdgeInsets.zero, title: const Text('Ends next day'),
+          value: _overnight, onChanged: (value) => setState(() => _overnight = value ?? false)),
+        Text('Grace period: $_grace minutes'),
+        Slider(value: _grace.toDouble(), min: 0, max: 120, divisions: 120,
+          label: '$_grace min', onChanged: (value) => setState(() => _grace = value.round())),
+        if (!_valid) const Text('Select a valid shift of at most 24 hours, longer than its grace period.'),
+      ]),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(onPressed: !_valid ? null : () => Navigator.pop(context,
+        _ShiftDraft(_start!, _end!, _overnight, _grace)), child: const Text('Save shift')),
+    ],
   );
 }
