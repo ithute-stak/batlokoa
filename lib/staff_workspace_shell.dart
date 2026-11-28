@@ -7,6 +7,12 @@ import 'staff_gateway.dart';
 import 'staff_client_directory_screen.dart';
 import 'staff_client_registration_screen.dart';
 import 'owner_staff_management_screen.dart';
+import 'staff_attendance_screen.dart';
+import 'staff_monitoring_scheduler.dart';
+import 'owner_attendance_alerts_screen.dart';
+import 'owner_access_events_screen.dart';
+import 'owner_work_roster_screen.dart';
+import 'staff_notification_screen.dart';
 
 /// Real LoanHub workspace with deliberate, individual destinations.
 class StaffWorkspaceShell extends StatefulWidget {
@@ -22,13 +28,249 @@ class StaffWorkspaceShell extends StatefulWidget {
   State<StaffWorkspaceShell> createState() => _StaffWorkspaceShellState();
 }
 
-class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
+class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsBindingObserver {
   int tab = 0;
+  // Separately released only after the monitoring API and employee notice
+  // have been approved. A gateway implementation alone is not activation.
+  static const _monitorReleased = bool.fromEnvironment('STAFF_MONITORING_ENABLED');
+  StaffMonitoringScheduler? _monitor;
+  StaffMonitorReceipt? _lastReading;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+    _configureMonitor();
+  }
+
+  void _configureMonitor() {
+    final gateway = widget.gateway;
+    if (_monitorReleased && gateway is StaffAttendanceGateway &&
+        gateway is StaffMonitoringGateway) {
+      _monitor = StaffMonitoringScheduler(
+        attendance: gateway as StaffAttendanceGateway,
+        monitoring: gateway as StaffMonitoringGateway,
+        onReading: (reading) {
+          if (mounted) setState(() => _lastReading = reading);
+        },
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant StaffWorkspaceShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.gateway, widget.gateway) ||
+        !identical(oldWidget.session, widget.session)) {
+      _monitor?.stop();
+      _monitor = null;
+      _lastReading = null;
+      _configureMonitor();
+    }
+    if (widget.busy) {
+      _monitor?.stop();
+      _lastReading = null;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    setState(() {
+      _foreground = state == AppLifecycleState.resumed;
+      if (!_foreground) {
+        _monitor?.stop();
+        _lastReading = null;
+      }
+    });
+  }
+
+  Future<void> _signOut() async {
+    setState(() {
+      _monitor?.stop();
+      _lastReading = null;
+    });
+    await widget.onLogout();
+  }
+
+  @override
+  void dispose() {
+    _monitor?.stop();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Widget monitoringPanel() {
+    final monitor = _monitor!;
+    final reading = _lastReading;
+    final status = !monitor.enabled ? 'Monitoring paused'
+        : reading == null ? 'Location not currently verified'
+        : reading.reading == StaffPerimeterReading.unverified
+            ? 'Location uncertain'
+        : reading.reading == StaffPerimeterReading.inside
+            ? 'Location reported inside'
+        : 'Location reported outside';
+    return Card(child: Column(children: [
+      SwitchListTile(
+        key: const Key('staff-monitoring-switch'),
+        title: const Text('Working-session location monitoring'),
+        subtitle: const Text('When enabled, the app checks your office perimeter '
+            'every 30 seconds during active attendance. Confirmed transitions '
+            'may be reported to management. Monitoring pauses when the app '
+            'loses foreground access.'),
+        value: monitor.enabled,
+        onChanged: !_foreground || widget.busy ? null : (enabled) {
+          setState(() {
+            _lastReading = null;
+            if (enabled) {
+              monitor.start();
+            } else {
+              monitor.stop();
+            }
+          });
+        },
+      ),
+      Padding(padding: const EdgeInsets.all(12),
+        child: Semantics(liveRegion: true, child: Text(status))),
+    ]));
+  }
   bool get owner => widget.session.role == 'COMPANY_OWNER'
       && widget.session.companyWide;
   bool get canManage => owner && widget.gateway is OwnerStaffManagementGateway;
+  static const _ownerAlertsReleased = bool.fromEnvironment('OWNER_ATTENDANCE_ALERTS_ENABLED');
+  bool get canViewAttendanceAlerts => _ownerAlertsReleased && owner &&
+      widget.gateway is OwnerAttendanceInboxGateway;
+
+  static const _ownerAccessReleased = bool.fromEnvironment('OWNER_ACCESS_INBOX_ENABLED');
+  bool get canViewAccessEvents => _ownerAccessReleased && owner &&
+      widget.gateway is OwnerAccessInboxGateway;
+
+  static const _ownerRosterReleased = bool.fromEnvironment('OWNER_WORK_ROSTER_ENABLED');
+  bool get canManageWorkRoster => _ownerRosterReleased && owner &&
+      widget.gateway is OwnerWorkRosterGateway &&
+      widget.gateway is OwnerRosterEmployeeGateway;
+
+  static const _notificationInboxReleased =
+      bool.fromEnvironment('STAFF_ATTENDANCE_INBOX_ENABLED');
+  bool get canViewNotifications => _notificationInboxReleased &&
+      widget.gateway is StaffNotificationGateway;
+
+  bool get canOpenAttendanceCenter => owner &&
+      (canViewNotifications || canManageWorkRoster ||
+       canViewAccessEvents || canViewAttendanceAlerts || canAttend);
+
+  void openAttendanceCenter() {
+    if (!canOpenAttendanceCenter || widget.busy || !_foreground) return;
+    open(Scaffold(
+      appBar: AppBar(title: const Text('Attendance management')),
+      body: SafeArea(child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: ListView(padding: BfsResponsive.pagePadding(context), children: [
+          const BfsSectionTitle(title: 'Attendance management',
+            eyebrow: 'COMPANY OWNER',
+            subtitle: 'Working schedules, access events and attendance notifications.'),
+          const SizedBox(height: 16),
+          const Text('Location reports are device readings, not proof of physical '
+            'presence. Signing out does not clock an employee out.'),
+          const SizedBox(height: 16),
+          if (canViewNotifications)
+            BfsActionPanel(icon: Icons.notifications_outlined,
+              title: 'Notification inbox', description: 'Review your attendance notifications',
+              onPressed: openNotifications),
+          if (canViewAttendanceAlerts) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.notifications_active_outlined,
+              title: 'Perimeter alerts', description: 'Review reported exits and returns',
+              onPressed: openAttendanceAlerts),
+          ],
+          if (canViewAccessEvents) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.login,
+              title: 'Access history', description: 'Review outside-office logins and sign-outs',
+              onPressed: openAccessEvents),
+          ],
+          if (canManageWorkRoster) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.calendar_month_outlined,
+              title: 'Working schedules', description: 'Manage scheduled workdays',
+              onPressed: openWorkRoster),
+          ],
+          if (canAttend) ...[
+            const SizedBox(height: 12),
+            BfsActionPanel(icon: Icons.access_time_rounded,
+              title: 'My attendance', description: 'Manage your own clock-in and clock-out',
+              onPressed: openAttendance),
+          ],
+        ]),
+      ))),
+    ));
+  }
+
+  void openNotifications() {
+    if (!canViewNotifications || widget.busy || !_foreground) return;
+    open(StaffNotificationScreen(
+      gateway: widget.gateway as StaffNotificationGateway,
+    ));
+  }
+
+  void openWorkRoster() {
+    if (!canManageWorkRoster || widget.busy || !_foreground) return;
+    open(OwnerWorkRosterScreen(
+      roster: widget.gateway as OwnerWorkRosterGateway,
+      directory: widget.gateway as OwnerRosterEmployeeGateway,
+    ));
+  }
+
+  void openAccessEvents() {
+    if (!canViewAccessEvents || widget.busy) return;
+    open(OwnerAccessEventsScreen(
+      gateway: widget.gateway as OwnerAccessInboxGateway,
+    ));
+  }
+
+  void openAttendanceAlerts() {
+    if (!canViewAttendanceAlerts || widget.busy) return;
+    open(OwnerAttendanceAlertsScreen(
+      gateway: widget.gateway as OwnerAttendanceInboxGateway,
+    ));
+  }
   void open(Widget screen) => Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => screen));
+
+  bool _openingAttendance = false;
+  bool get canAttend => widget.gateway is StaffAttendanceGateway &&
+      widget.gateway is StaffRegistrationBranchGateway;
+
+  Future<void> openAttendance() async {
+    if (!canAttend || _openingAttendance || widget.busy) return;
+    setState(() => _openingAttendance = true);
+    try {
+      final rows = await (widget.gateway as StaffRegistrationBranchGateway)
+          .registrationBranches();
+      if (!mounted) return;
+      final branches = <String, String>{
+        for (final row in rows) row['id']!: row['name']!,
+      };
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => StaffAttendanceScreen(
+          staff: widget.session,
+          gateway: widget.gateway as StaffAttendanceGateway,
+          branches: branches,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Attendance branch directory unavailable. Please retry.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _openingAttendance = false);
+    }
+  }
 
   void openClients() => open(StaffClientDirectoryScreen(
     gateway: widget.gateway, staff: widget.session));
@@ -115,6 +357,10 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
           ])),
       ]),
     ),
+    if (_monitor != null) ...[
+      const SizedBox(height: 16),
+      monitoringPanel(),
+    ],
     const SizedBox(height: 27),
     Row(children: [
       const Expanded(child: Text('Quick actions', style: TextStyle(
@@ -125,6 +371,39 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
     ]),
     const SizedBox(height: 12),
     actionGrid([
+      if (canOpenAttendanceCenter)
+        KeyedSubtree(key: const Key('owner-open-attendance-center'),
+          child: BfsActionPanel(icon: Icons.dashboard_outlined,
+            title: 'Attendance management',
+            description: 'Schedules, alerts and attendance tools in one place',
+            onPressed: openAttendanceCenter)),
+      if (canViewNotifications)
+        KeyedSubtree(key: const Key('staff-open-notifications'),
+          child: BfsActionPanel(icon: Icons.notifications_outlined,
+            title: 'Attendance notifications',
+            description: owner ? 'Review attendance and access alerts'
+                : 'View your clock-in reminders',
+            onPressed: openNotifications)),
+      if (canManageWorkRoster)
+        KeyedSubtree(key: const Key('owner-open-work-roster'),
+          child: BfsActionPanel(icon: Icons.calendar_month_outlined,
+            title: 'Working schedules', description: 'Assign employee working and non-working days',
+            onPressed: openWorkRoster)),
+      if (canViewAccessEvents)
+        KeyedSubtree(key: const Key('owner-open-access-events'),
+          child: BfsActionPanel(icon: Icons.login,
+            title: 'Employee access events', description: 'Review outside-office logins and sign-outs',
+            onPressed: openAccessEvents)),
+      if (canViewAttendanceAlerts)
+        KeyedSubtree(key: const Key('owner-open-attendance-alerts'),
+          child: BfsActionPanel(icon: Icons.notifications_active_outlined,
+            title: 'Attendance alerts', description: 'Review reported office perimeter events',
+            onPressed: openAttendanceAlerts)),
+      if (canAttend)
+        KeyedSubtree(key: const Key('staff-open-attendance'),
+          child: BfsActionPanel(icon: Icons.access_time_rounded,
+            title: 'My attendance', description: 'Clock in, clock out and view history',
+            onPressed: openAttendance)),
       KeyedSubtree(key: const Key('staff-find-clients'),
         child: BfsActionPanel(icon: Icons.manage_search_rounded,
           title: 'Find clients', description: 'Search LoanHub records',
@@ -228,7 +507,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
     ])),
     const SizedBox(height: 24),
     SizedBox(height: 52, child: FilledButton.icon(
-      onPressed: widget.busy ? null : widget.onLogout,
+      onPressed: widget.busy ? null : _signOut,
       icon: const Icon(Icons.logout_rounded),
       label: const Text('Sign out securely'))),
   ]);
@@ -274,7 +553,7 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> {
         ]),
         actions: [IconButton(
           key: const Key('staff-logout'), tooltip: 'Sign out',
-          onPressed: widget.busy ? null : widget.onLogout,
+          onPressed: widget.busy ? null : _signOut,
           icon: const Icon(Icons.logout_outlined))],
       ),
       body: SafeArea(child: Row(children: [

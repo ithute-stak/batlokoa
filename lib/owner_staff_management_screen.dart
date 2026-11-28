@@ -4,6 +4,7 @@ import 'bfs_widgets.dart';
 import 'bfs_responsive.dart';
 import 'staff_gateway.dart';
 import 'owner_staff_registration_screen.dart';
+import 'owner_branch_location_screen.dart';
 
 /// Dedicated, role-scoped staff directory; account creation is another screen.
 class OwnerStaffManagementScreen extends StatefulWidget {
@@ -44,6 +45,20 @@ class _OwnerStaffManagementState extends State<OwnerStaffManagementScreen> {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
       OwnerStaffRegistrationScreen(staff: widget.staff, gateway: widget.gateway)));
     if (mounted) refresh();
+  }
+
+  Future<void> openBranchLocations() async {
+    final gateway = widget.gateway;
+    if (widget.staff.role != 'COMPANY_OWNER' ||
+        !widget.staff.companyWide ||
+        gateway is! StaffBranchLocationGateway) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => OwnerBranchLocationScreen(
+        staff: widget.staff,
+        directory: widget.gateway,
+        gateway: gateway as StaffBranchLocationGateway,
+      ),
+    ));
   }
 
   Widget personRow(Map<String, dynamic> person) {
@@ -115,6 +130,17 @@ class _OwnerStaffManagementState extends State<OwnerStaffManagementScreen> {
           onPressed: loading || error != null ? null : openRegistration,
           icon: const Icon(Icons.person_add_alt_1_rounded),
           label: const Text('Register employee'))),
+        if (widget.staff.role == 'COMPANY_OWNER' &&
+            widget.staff.companyWide &&
+            widget.gateway is StaffBranchLocationGateway) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('owner-open-branch-locations'),
+            onPressed: loading || error != null ? null : openBranchLocations,
+            icon: const Icon(Icons.location_on_outlined),
+            label: const Text('Branch locations'),
+          ),
+        ],
         const SizedBox(height: 22),
         Row(children: [
           const Expanded(child: Text('Employee directory', style: TextStyle(

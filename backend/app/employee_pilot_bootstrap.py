@@ -41,9 +41,22 @@ def configure_employee_pilot(app: FastAPI) -> bool:
         raise ValueError("Unrecognized Batlokoa employee login mode")
     if os.environ.get("BATLOKOA_EMPLOYEE_PILOT_ACK") != ACK:
         raise ValueError("Restricted employee pilot approval is missing")
-    if os.environ.get("BATLOKOA_EMPLOYEE_PUBLIC_ORIGIN") != PUBLIC_ORIGIN:
+    public_origin, loanhub_origin = PUBLIC_ORIGIN, LOANHUB_ORIGIN
+    attendance_mode = os.environ.get("BATLOKOA_ATTENDANCE_MODE", "")
+    if attendance_mode:
+        if attendance_mode != "reviewed_staging":
+            raise ValueError("Unrecognized attendance staging mode")
+        # Fixed isolated staging hostnames, never arbitrary operator URLs.
+        # Provision DNS, TLS and a separate LoanHub instance before activation.
+        public_origin = "https://attendance-staging.batlokoa.co.ls"
+        loanhub_origin = "https://attendance-staging-api.loanhub.co.ls"
+        if os.environ.get("BATLOKOA_OWNER_LOGIN_LOANHUB_ACTIVE_MEMBERSHIP") == "true":
+            raise ValueError("Unverified owner exception forbidden in attendance staging")
+        if os.environ.get("BATLOKOA_STAFF_CREATION_MODE", ""):
+            raise ValueError("Staff creation forbidden in attendance staging")
+    if os.environ.get("BATLOKOA_EMPLOYEE_PUBLIC_ORIGIN") != public_origin:
         raise ValueError("Public origin must be operator-approved Batlokoa HTTPS")
-    if os.environ.get("BATLOKOA_EMPLOYEE_LOANHUB_ORIGIN") != LOANHUB_ORIGIN:
+    if os.environ.get("BATLOKOA_EMPLOYEE_LOANHUB_ORIGIN") != loanhub_origin:
         raise ValueError("LoanHub API origin must be pinned")
     try:
         company = UUID(os.environ["BATLOKOA_EMPLOYEE_COMPANY_ID"])
@@ -65,12 +78,12 @@ def configure_employee_pilot(app: FastAPI) -> bool:
         os.environ.get("BATLOKOA_OWNER_LOGIN_LOANHUB_ACTIVE_MEMBERSHIP") == "true"
     )
     verifier = LoanHubStaffVerifier(
-        origin=LOANHUB_ORIGIN, public_key=key, batlokoa_company_id=company,
+        origin=loanhub_origin, public_key=key, batlokoa_company_id=company,
         allow_unverified_company_owner=allow_owner,
     )
     config = StaffLoginConfig(
-        public_origin=PUBLIC_ORIGIN,
-        loanhub_origin=LOANHUB_ORIGIN,
+        public_origin=public_origin,
+        loanhub_origin=loanhub_origin,
         verifier=verifier,
         store=StagingStaffSessionStore(max_sessions=100),
     )
@@ -87,7 +100,7 @@ def configure_employee_pilot(app: FastAPI) -> bool:
     # Read-only directory has a second independent, explicit activation flag.
     if os.environ.get("BATLOKOA_EMPLOYEE_READONLY_DIRECTORY", "") == "true":
         app.state.staff_client_directory = LoanHubStaffClientDirectory(
-            origin=LOANHUB_ORIGIN,
+            origin=loanhub_origin,
         )
         app.state.staff_client_directory_enabled = True
     # Independent read-only identity review; no client registration writes.
@@ -95,7 +108,79 @@ def configure_employee_pilot(app: FastAPI) -> bool:
         if os.environ.get("BATLOKOA_STAFF_NATIONAL_ID_CHECK_ACK") != "POST_BODY_CSRF_NO_CLIENT_WRITES":
             raise ValueError("National ID review operator approval missing")
         app.state.staff_registration_identity_review = LoanHubRegistrationReview(
-            origin=LOANHUB_ORIGIN
+            origin=loanhub_origin
         )
         app.state.staff_registration_identity_review_enabled = True
+    configure_attendance_pilot(app, company=company, env=os.environ, loanhub_origin=loanhub_origin)
+    return True
+
+
+def configure_attendance_pilot(app: FastAPI, *, company: UUID, env,
+                               loanhub_origin=LOANHUB_ORIGIN):
+    """Explicit staging-only attendance assembly; never migrates or sends on boot."""
+    if env.get("BATLOKOA_ATTENDANCE_MODE", "") == "":
+        return False
+    if (env.get("BATLOKOA_ATTENDANCE_MODE") != "reviewed_staging"
+            or env.get("BATLOKOA_ATTENDANCE_ACK") != "STAGING_ATTENDANCE_WRITES_AND_DISCLOSED_MONITORING"
+            or env.get("BATLOKOA_ATTENDANCE_COMPANY_ID") != str(company)):
+        raise ValueError("Explicit scoped attendance staging approval required")
+    from .staff_branch_location_store import BranchLocationStore
+    from .staff_attendance_store import AttendanceStore
+    from .staff_attendance_monitor_store import AttendanceMonitorStore
+    from .staff_attendance_access_store import AttendanceAccessStore
+    from .owner_attendance_inbox import OwnerAttendanceInbox
+    from .staff_morning_work_roster_store import MorningWorkRosterStore
+    from .staff_attendance_notification_inbox import AttendanceNotificationInbox
+    from .staff_morning_loanhub_directory import LoanHubMorningDirectory
+    import psycopg
+
+    dsn = env.get("BATLOKOA_ATTENDANCE_GATEWAY_DATABASE_URL", "")
+    if not dsn:
+        raise ValueError("Restricted attendance gateway database required")
+    def connect():
+        return psycopg.connect(dsn, connect_timeout=5,
+            options="-c statement_timeout=10000 -c lock_timeout=5000 -c search_path=public")
+
+    flags = {
+        "staff_branch_location_enabled": "BATLOKOA_ATTENDANCE_BRANCH_LOCATION",
+        "staff_attendance_monitor_enabled": "BATLOKOA_ATTENDANCE_MONITOR",
+        "staff_login_location_enabled": "BATLOKOA_ATTENDANCE_LOGIN_LOCATION",
+        "staff_logout_audit_enabled": "BATLOKOA_ATTENDANCE_LOGOUT_AUDIT",
+        "owner_attendance_inbox_enabled": "BATLOKOA_ATTENDANCE_OWNER_ALERTS",
+        "owner_access_inbox_enabled": "BATLOKOA_ATTENDANCE_OWNER_ACCESS",
+        "owner_work_roster_enabled": "BATLOKOA_ATTENDANCE_WORK_ROSTER",
+        "staff_attendance_receiver_enabled": "BATLOKOA_ATTENDANCE_RECEIVER",
+        "staff_attendance_inbox_enabled": "BATLOKOA_ATTENDANCE_INBOX",
+    }
+    values = {}
+    for attr, name in flags.items():
+        value = env.get(name, "false")
+        if value not in {"true", "false"}:
+            raise ValueError("Invalid attendance release flag")
+        values[attr] = value == "true"
+    state = app.state
+    if values["staff_attendance_receiver_enabled"] or values["staff_attendance_inbox_enabled"]:
+        directory_token = env.get("BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN", "")
+        relay_token = env.get("BATLOKOA_ATTENDANCE_RECEIVER_TOKEN", "")
+        if (not 32 <= len(directory_token) <= 4096
+                or not 32 <= len(relay_token) <= 4096
+                or directory_token == relay_token
+                or any(not 33 <= ord(c) <= 126 for c in directory_token + relay_token)):
+            raise ValueError("Distinct attendance service credentials required")
+        directory = LoanHubMorningDirectory(origin=loanhub_origin,
+            company_id=company, token=directory_token)
+        state.staff_attendance_notification_inbox = AttendanceNotificationInbox(
+            connect, directory, company_id=company)
+        state.staff_attendance_receiver_token = relay_token
+        state.staff_attendance_receiver_company_id = company
+
+    state.staff_branch_location_store = BranchLocationStore(connect)
+    state.staff_attendance_store = AttendanceStore(connect)
+    state.staff_attendance_monitor_store = AttendanceMonitorStore(connect)
+    state.staff_attendance_access_store = AttendanceAccessStore(connect)
+    state.owner_attendance_inbox = OwnerAttendanceInbox(connect)
+    state.staff_morning_work_roster_store = MorningWorkRosterStore(connect)
+    for attr, enabled in values.items():
+        setattr(state, attr, enabled)
+    state.staff_attendance_enabled = True
     return True

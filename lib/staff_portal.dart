@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'batlokoa_logo.dart';
 import 'staff_gateway.dart';
+import 'staff_location_capture.dart';
 import 'staff_client_directory_screen.dart';
 import 'owner_staff_management_screen.dart';
 import 'staff_workspace_shell.dart';
@@ -21,6 +22,9 @@ class _StaffPortalState extends State<StaffPortal> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _secondFactor = TextEditingController();
+  static const _locationReleased = bool.fromEnvironment('STAFF_LOGIN_LOCATION_ENABLED');
+  bool _shareLoginLocation = false;
+  bool get _canShareLocation => _locationReleased && widget.gateway is StaffLocationLoginGateway;
   bool _useRecoveryCode = false;
   StaffSession? _session;
   bool _loading = true;
@@ -50,19 +54,36 @@ class _StaffPortalState extends State<StaffPortal> {
     setState(() { _busy = true; _error = null; });
     try {
       final enteredSecondFactor = _secondFactor.text.trim();
-      final session = widget.gateway is StaffSecondFactorGateway
-          ? await (widget.gateway as StaffSecondFactorGateway)
-              .loginWithSecondFactor(
-                  _phone.text.trim(), _password.text,
-                  otp: enteredSecondFactor.isNotEmpty && !_useRecoveryCode
-                      ? enteredSecondFactor : null,
-                  recoveryCode: enteredSecondFactor.isNotEmpty && _useRecoveryCode
-                      ? enteredSecondFactor : null)
-          : await widget.gateway.login(_phone.text.trim(), _password.text);
+      final phone = _phone.text.trim();
+      final password = _password.text;
+      final otp = enteredSecondFactor.isNotEmpty && !_useRecoveryCode
+          ? enteredSecondFactor : null;
+      final recoveryCode = enteredSecondFactor.isNotEmpty && _useRecoveryCode
+          ? enteredSecondFactor : null;
+      StaffLocationCapture? capture;
+      if (_canShareLocation && _shareLoginLocation) {
+        try {
+          capture = await captureStaffLocation();
+          if (!capture.isUsableAt(DateTime.now())) capture = null;
+        } catch (_) {
+          // Location is optional for access reporting, not a substitute for MFA.
+          capture = null;
+        }
+      }
+      if (!mounted) return;
+      final session = capture != null && _canShareLocation
+          ? await (widget.gateway as StaffLocationLoginGateway).loginWithLocation(
+              phone, password, capture: capture,
+              otp: otp, recoveryCode: recoveryCode)
+          : widget.gateway is StaffSecondFactorGateway
+              ? await (widget.gateway as StaffSecondFactorGateway).loginWithSecondFactor(
+                  phone, password, otp: otp, recoveryCode: recoveryCode)
+              : await widget.gateway.login(phone, password);
       if (mounted) {
         setState(() => _session = session);
         _password.clear();
         _secondFactor.clear();
+        _shareLoginLocation = false;
       }
     } catch (_) {
       if (mounted) {
@@ -266,6 +287,16 @@ class _StaffPortalState extends State<StaffPortal> {
               ? 'Use authenticator code' : 'Use recovery code instead'),
           ),
         ),
+        if (_canShareLocation) ...[
+          SwitchListTile(
+            key: const Key('staff-login-location-consent'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Share location for this sign-in'),
+            subtitle: const Text('Checks your assigned office perimeter. A reliable outside-office reading may be reported to the company owner. If location is unavailable, sign-in can continue without a verified location.'),
+            value: _shareLoginLocation,
+            onChanged: _busy ? null : (value) => setState(() => _shareLoginLocation = value),
+          ),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 8),
           Text(_error!, key: const Key('staff-error'),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'staff_location_capture.dart';
 import 'package:http/http.dart' as http;
 
 /// A read-only Batlokoa staff session snapshot. All values are returned by the
@@ -119,6 +120,14 @@ abstract class StaffSecondFactorGateway {
   });
 }
 
+/// Optional location-aware login; the server still verifies branch membership.
+abstract class StaffLocationLoginGateway {
+  Future<StaffSession> loginWithLocation(String phone, String password, {
+    String? otp, String? recoveryCode,
+    String? branchId, required StaffLocationCapture capture,
+  });
+}
+
 /// Registration release state from LoanHub; never authorizes a write.
 class StaffRegistrationReadiness {
   final bool registrationAvailable;
@@ -232,6 +241,161 @@ abstract class OwnerStaffManagementGateway {
   Future<String> createStaffAccount(Map<String, dynamic> draft);
 }
 
+class StaffAttendanceSession {
+  final int id;
+  final String branchId;
+  final DateTime clockedInAt;
+  final DateTime? clockedOutAt;
+  const StaffAttendanceSession(this.id, this.branchId, this.clockedInAt, this.clockedOutAt);
+
+  factory StaffAttendanceSession.fromJson(Map<String, dynamic> data) {
+    final id = data['session_id'];
+    final branch = data['branch_id'];
+    final start = data['clocked_in_at'];
+    final end = data['clocked_out_at'];
+    if (id is! int || id <= 0 || branch is! String || branch.isEmpty ||
+        start is! String || (end != null && end is! String)) {
+      throw const FormatException('Invalid attendance session');
+    }
+    final opened = DateTime.parse(start);
+    final closed = end == null ? null : DateTime.parse(end as String);
+    if (!opened.isUtc || (closed != null && (!closed.isUtc || closed.isBefore(opened)))) {
+      throw const FormatException('Invalid attendance time');
+    }
+    return StaffAttendanceSession(id, branch, opened, closed);
+  }
+}
+
+abstract class StaffAttendanceGateway {
+  Future<StaffAttendanceSession?> attendanceStatus();
+  Future<List<StaffAttendanceSession>> attendanceHistory({int limit = 30, int? before});
+  Future<void> recordAttendance(String branchId, StaffLocationCapture capture, {required bool clockIn});
+}
+
+enum StaffPerimeterReading { inside, outside, unverified }
+
+class StaffMonitorReceipt {
+  final int sessionId;
+  final StaffPerimeterReading reading;
+  final StaffPerimeterReading lastConfirmed;
+  final DateTime observedAt;
+  final bool transitionRecorded;
+  const StaffMonitorReceipt(this.sessionId, this.reading, this.lastConfirmed,
+      this.observedAt, this.transitionRecorded);
+}
+
+abstract class StaffMonitoringGateway {
+  Future<StaffMonitorReceipt> submitObservation(
+      StaffAttendanceSession session, StaffLocationCapture capture);
+}
+
+class OwnerAttendanceAlert {
+  final int id;
+  final int sessionId;
+  final String employeeId;
+  final String branchId;
+  final String eventType;
+  final DateTime observedAt;
+  final String? employeeName;
+  final String? branchName;
+  const OwnerAttendanceAlert(this.id, this.sessionId, this.employeeId,
+      this.branchId, this.eventType, this.observedAt,
+      {this.employeeName, this.branchName});
+}
+
+class OwnerAttendanceAlertPage {
+  final List<OwnerAttendanceAlert> alerts;
+  final int nextAfter;
+  final bool hasMore;
+  const OwnerAttendanceAlertPage(this.alerts, this.nextAfter, this.hasMore);
+}
+
+abstract class OwnerAttendanceInboxGateway {
+  Future<OwnerAttendanceAlertPage> attendanceAlerts({int after = 0, int limit = 50});
+}
+
+class OwnerAccessEvent {
+  final String id, employeeId, eventType;
+  final String? branchId, employeeName, branchName;
+  final DateTime observedAt;
+  const OwnerAccessEvent(this.id, this.employeeId, this.eventType,
+      this.observedAt, {this.branchId, this.employeeName, this.branchName});
+}
+
+class OwnerAccessCursor {
+  final String observedAt, eventId;
+  const OwnerAccessCursor(this.observedAt, this.eventId);
+}
+
+class OwnerAccessEventPage {
+  final List<OwnerAccessEvent> events;
+  final OwnerAccessCursor? nextBefore;
+  const OwnerAccessEventPage(this.events, this.nextBefore);
+  bool get hasMore => nextBefore != null;
+}
+
+abstract class OwnerAccessInboxGateway {
+  Future<OwnerAccessEventPage> accessEvents({OwnerAccessCursor? before, int limit = 50});
+}
+
+
+class StaffAttendanceNotification {
+  final String key, employeeId, eventType;
+  final DateTime observedAt, createdAt;
+  final DateTime? expiresAt, readAt;
+  const StaffAttendanceNotification(this.key, this.employeeId, this.eventType,
+      this.observedAt, this.createdAt, this.expiresAt, this.readAt);
+}
+
+class StaffNotificationCursor {
+  final String createdAt, key;
+  const StaffNotificationCursor(this.createdAt, this.key);
+}
+
+class StaffNotificationPage {
+  final List<StaffAttendanceNotification> notifications;
+  final StaffNotificationCursor? nextBefore;
+  const StaffNotificationPage(this.notifications, this.nextBefore);
+}
+
+abstract class StaffNotificationGateway {
+  Future<StaffNotificationPage> attendanceNotifications(
+      {StaffNotificationCursor? before, int limit = 50});
+}
+
+class OwnerRosterEmployee {
+  final String employeeId, role;
+  final String? name;
+  const OwnerRosterEmployee(this.employeeId, this.role, this.name);
+}
+
+abstract class OwnerRosterEmployeeGateway {
+  Future<List<OwnerRosterEmployee>> rosterEmployees();
+}
+
+class OwnerWorkRosterRow {
+  final String employeeId, recordedBy;
+  final bool scheduledToWork;
+  final DateTime recordedAt;
+  const OwnerWorkRosterRow(this.employeeId, this.scheduledToWork,
+      this.recordedBy, this.recordedAt);
+}
+
+class OwnerWorkRosterPage {
+  final List<OwnerWorkRosterRow> rows;
+  final String? nextAfter;
+  const OwnerWorkRosterPage(this.rows, this.nextAfter);
+}
+
+abstract class OwnerWorkRosterGateway {
+  Future<OwnerWorkRosterPage> workRoster(String workDate, {String? after, int limit = 50});
+  Future<bool> setWorkDay(String employeeId, String workDate, {required bool scheduledToWork});
+}
+
+abstract class StaffBranchLocationGateway {
+  Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture);
+}
+
 /// Explicitly disabled until a reviewed same-origin BFF client is installed.
 /// Unlike the legacy customer preview, this never simulates signing in.
 class DisabledStaffGateway implements StaffGateway {
@@ -259,7 +423,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway, StaffNotificationGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -295,6 +459,29 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
     String password, {
     String? otp,
     String? recoveryCode,
+  }) => _login(phone, password, otp: otp, recoveryCode: recoveryCode);
+
+  @override
+  Future<StaffSession> loginWithLocation(String phone, String password, {
+    String? otp, String? recoveryCode,
+    String? branchId, required StaffLocationCapture capture,
+  }) {
+    if ((branchId != null && !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(branchId)) ||
+        !capture.isUsableAt(DateTime.now())) {
+      throw StateError('Fresh location and valid optional branch required');
+    }
+    return _login(phone, password, otp: otp, recoveryCode: recoveryCode,
+      location: {
+        if (branchId != null) 'branch_id': branchId,
+        'latitude': capture.latitude,
+        'longitude': capture.longitude,
+        'accuracy_m': capture.accuracyM,
+        'captured_at': capture.capturedAt.toUtc().toIso8601String(),
+      });
+  }
+
+  Future<StaffSession> _login(String phone, String password, {
+    String? otp, String? recoveryCode, Map<String, dynamic>? location,
   }) async {
     if (otp != null && recoveryCode != null) {
       throw ArgumentError('Select either an authenticator code or recovery code');
@@ -308,6 +495,7 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
           'password': password,
           if (otp != null) 'otp': otp,
           if (recoveryCode != null) 'recovery_code': recoveryCode,
+          if (location != null) 'location': location,
         }));
     if (res.statusCode != 200) throw StateError('Employee sign-in was denied');
     // Login response is not sufficient authorization: revalidate via session.
@@ -549,6 +737,528 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Unexpected registration confirmation');
     }
     return StaffCreatedClientReceipt.fromJson(data);
+  }
+
+  @override
+  Future<int> registerBranchLocation(String branchId, StaffLocationCapture capture) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(branchId) ||
+        !capture.isUsableAt(DateTime.now())) {
+      throw StateError('Fresh location and secure owner session required');
+    }
+    final request = http.Request('POST',
+        _url('/api/v1/staff/manage/branches/$branchId/location'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      })
+      ..body = jsonEncode(capture.registrationPayload());
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 201 || response.bodyBytes.length > 4096) {
+      throw StateError('Branch location registration was not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['registered'] != true ||
+        data['radius_m'] != 10 || data['revision_id'] is! int ||
+        (data['revision_id'] as int) <= 0) {
+      throw const FormatException('Invalid registration receipt');
+    }
+    return data['revision_id'] as int;
+  }
+
+  Future<Map<String, dynamic>> _attendanceRead(String path, {Map<String, String>? query}) async {
+    final uri = _url(path).replace(queryParameters: query);
+    final response = await client.get(uri, headers: {
+      'Accept': 'application/json', 'Cache-Control': 'no-store',
+    });
+    if (response.statusCode != 200 || response.bodyBytes.length > 65536) {
+      throw StateError('Attendance information unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Invalid attendance response');
+    }
+    return data;
+  }
+
+  @override
+  Future<StaffAttendanceSession?> attendanceStatus() async {
+    final data = await _attendanceRead('/api/v1/staff/attendance/status');
+    final session = data['session'];
+    if (data['clocked_in'] == false && session == null) return null;
+    if (data['clocked_in'] != true || session is! Map<String, dynamic>) {
+      throw const FormatException('Invalid attendance status');
+    }
+    final row = StaffAttendanceSession.fromJson(session);
+    if (row.clockedOutAt != null) throw const FormatException('Session already closed');
+    return row;
+  }
+
+  @override
+  Future<List<StaffAttendanceSession>> attendanceHistory({int limit = 30, int? before}) async {
+    if (limit < 1 || limit > 100 || (before != null && before <= 0)) {
+      throw ArgumentError('Invalid attendance pagination');
+    }
+    final data = await _attendanceRead('/api/v1/staff/attendance/history',
+        query: {'limit': '$limit', if (before != null) 'before': '$before'});
+    final rows = data['sessions'];
+    if (rows is! List || rows.length > limit) {
+      throw const FormatException('Invalid attendance history');
+    }
+    final result = <StaffAttendanceSession>[];
+    int? previous = before;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid attendance row');
+      final item = StaffAttendanceSession.fromJson(row);
+      if (previous != null && item.id >= previous) {
+        throw const FormatException('Invalid attendance ordering');
+      }
+      previous = item.id;
+      result.add(item);
+    }
+    return List<StaffAttendanceSession>.unmodifiable(result);
+  }
+
+  @override
+  Future<void> recordAttendance(String branchId, StaffLocationCapture capture, {required bool clockIn}) async {
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty || !capture.isUsableAt(DateTime.now()) ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(branchId)) {
+      throw StateError('Fresh precise location and secure staff session required');
+    }
+    final endpoint = clockIn ? 'clock-in' : 'clock-out';
+    final request = http.Request('POST', _url('/api/v1/staff/attendance/$endpoint'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Content-Type': 'application/json', 'Accept': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      })
+      ..body = jsonEncode({
+        'branch_id': branchId, 'latitude': capture.latitude,
+        'longitude': capture.longitude, 'accuracy_m': capture.accuracyM,
+        'captured_at': capture.capturedAt.toUtc().toIso8601String(),
+      });
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.bodyBytes.length > 4096) throw StateError('Attendance not confirmed');
+    final data = jsonDecode(response.body);
+    if (response.statusCode != 201 || data is! Map<String, dynamic> ||
+        data['action'] != (clockIn ? 'clock_in' : 'clock_out') ||
+        data['branch_id'] != branchId ||
+        data['session_id'] is! int || (data['session_id'] as int) <= 0 ||
+        data['event_id'] is! int || (data['event_id'] as int) <= 0) {
+      if (data is Map && data['code'] == 'OUTSIDE_PERIMETER') {
+        throw StateError('You are outside the authorized office perimeter.');
+      }
+      throw StateError('Attendance was not confirmed. Refresh status before retrying.');
+    }
+  }
+
+  @override
+  Future<StaffMonitorReceipt> submitObservation(
+      StaffAttendanceSession session, StaffLocationCapture capture) async {
+    final csrf = csrfToken?.call();
+    final age = DateTime.now().difference(capture.capturedAt);
+    if (csrf == null || csrf.isEmpty || session.id <= 0 ||
+        session.clockedOutAt != null ||
+        !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(session.branchId) ||
+        !capture.latitude.isFinite || capture.latitude.abs() > 90 ||
+        !capture.longitude.isFinite || capture.longitude.abs() > 180 ||
+        !capture.accuracyM.isFinite || capture.accuracyM <= 0 ||
+        age < const Duration(seconds: -5) || age > const Duration(seconds: 30)) {
+      throw StateError('Active session and fresh location required');
+    }
+    final request = http.Request('POST', _url('/api/v1/staff/attendance/monitor'))
+      ..followRedirects = false
+      ..headers.addAll({
+        'Content-Type': 'application/json', 'Accept': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString(),
+      })
+      ..body = jsonEncode({
+        'session_id': session.id, 'branch_id': session.branchId,
+        'latitude': capture.latitude, 'longitude': capture.longitude,
+        'accuracy_m': capture.accuracyM,
+        'captured_at': capture.capturedAt.toUtc().toIso8601String(),
+      });
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 4096) {
+      throw StateError('Monitoring observation not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['session_id'] is! int ||
+        data['session_id'] != session.id || data['observed_at'] is! String ||
+        data['transition_recorded'] is! bool) {
+      throw const FormatException('Invalid monitoring response');
+    }
+    StaffPerimeterReading parse(Object? value) {
+      switch (value) {
+        case 'verified_inside': return StaffPerimeterReading.inside;
+        case 'verified_outside': return StaffPerimeterReading.outside;
+        case 'unverified': return StaffPerimeterReading.unverified;
+        default: throw const FormatException('Invalid perimeter state');
+      }
+    }
+    final reading = parse(data['reading']);
+    final confirmed = parse(data['last_confirmed']);
+    final observed = DateTime.parse(data['observed_at'] as String);
+    final transition = data['transition_recorded'] as bool;
+    if (!observed.isUtc || confirmed == StaffPerimeterReading.unverified ||
+        (transition && reading != confirmed)) {
+      throw const FormatException('Inconsistent monitoring response');
+    }
+    return StaffMonitorReceipt(session.id, reading, confirmed, observed, transition);
+  }
+
+  @override
+  Future<OwnerAttendanceAlertPage> attendanceAlerts({int after = 0, int limit = 50}) async {
+    if (after < 0 || limit < 1 || limit > 100) {
+      throw ArgumentError('Invalid alert pagination');
+    }
+    final uri = _url('/api/v1/staff/manage/attendance/alerts').replace(
+        queryParameters: {'after': '$after', 'limit': '$limit'});
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 65536) {
+      throw StateError('Owner attendance inbox unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['alerts'] is! List ||
+        data['next_after'] is! int || data['has_more'] is! bool) {
+      throw const FormatException('Invalid alert page');
+    }
+    final rows = data['alerts'] as List;
+    if (rows.length > limit) throw const FormatException('Oversized alert page');
+    final alerts = <OwnerAttendanceAlert>[];
+    var previous = after;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid alert');
+      final id = row['alert_id'];
+      final session = row['session_id'];
+      final employee = row['employee_id'];
+      final branch = row['branch_id'];
+      final event = row['event_type'];
+      final observed = row['observed_at'];
+      if (id is! int || id <= previous || session is! int || session <= 0 ||
+          employee is! String || employee.isEmpty || employee.length > 36 ||
+          branch is! String || branch.isEmpty || branch.length > 36 ||
+          event is! String ||
+          !['reported_outside_perimeter', 'reported_inside_perimeter'].contains(event) ||
+          observed is! String) {
+        throw const FormatException('Invalid attendance alert');
+      }
+      final date = DateTime.parse(observed);
+      if (!date.isUtc) throw const FormatException('Invalid alert timestamp');
+      String? label(Object? value, int maxLength) {
+        if (value == null) return null;
+        if (value is! String || value.length > maxLength) {
+          throw const FormatException('Invalid attendance label');
+        }
+        final trimmed = value.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }
+      alerts.add(OwnerAttendanceAlert(id, session, employee, branch, event, date,
+          employeeName: label(row['employee_name'], 200),
+          branchName: label(row['branch_name'], 120)));
+      previous = id;
+    }
+    if (data['next_after'] != previous ||
+        (data['has_more'] == true && rows.length != limit)) {
+      throw const FormatException('Invalid alert cursor');
+    }
+    return OwnerAttendanceAlertPage(List.unmodifiable(alerts), previous, data['has_more'] as bool);
+  }
+
+  @override
+  Future<OwnerAccessEventPage> accessEvents({OwnerAccessCursor? before, int limit = 50}) async {
+    final uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+    bool validId(Object? value) => value is String && uuid.hasMatch(value);
+    if (limit < 1 || limit > 100 ||
+        (before != null && (!validId(before.eventId) ||
+          DateTime.tryParse(before.observedAt)?.isUtc != true))) {
+      throw ArgumentError('Invalid access event pagination');
+    }
+    final uri = _url('/api/v1/staff/manage/attendance/access-events').replace(
+      queryParameters: {'limit': '$limit',
+        if (before != null) 'before_at': before.observedAt,
+        if (before != null) 'before_id': before.eventId});
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Owner access inbox unavailable');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['events'] is! List ||
+        data['has_more'] is! bool) {
+      throw const FormatException('Invalid access page');
+    }
+    final rows = data['events'] as List;
+    if (rows.length > limit) throw const FormatException('Oversized access page');
+    final events = <OwnerAccessEvent>[];
+    final seen = <String>{};
+    DateTime? previous = before == null ? null : DateTime.parse(before.observedAt);
+    String? previousId = before?.eventId;
+    String? lastRaw;
+    String? label(Object? value, int maxLength) {
+      if (value == null) return null;
+      if (value is! String || value.length > maxLength) {
+        throw const FormatException('Invalid access event label');
+      }
+      return value.trim().isEmpty ? null : value.trim();
+    }
+    for (final row in rows) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid access event');
+      final id = row['event_id'];
+      final employee = row['employee_id'];
+      final branch = row['branch_id'];
+      final kind = row['event_type'];
+      final observed = row['observed_at'];
+      if (!validId(id) || !validId(employee) ||
+          (branch != null && !validId(branch)) ||
+          !['reported_login_outside', 'staff_logged_out'].contains(kind) ||
+          (kind == 'reported_login_outside' && branch == null) ||
+          observed is! String) {
+        throw const FormatException('Invalid access event fields');
+      }
+      final date = DateTime.parse(observed);
+      final eventId = id as String;
+      if (!date.isUtc || !seen.add(eventId) ||
+          (previous != null && (date.isAfter(previous) ||
+            (date == previous && eventId.compareTo(previousId!) >= 0)))) {
+        throw const FormatException('Invalid access event ordering');
+      }
+      events.add(OwnerAccessEvent(eventId, employee as String, kind as String,
+          date, branchId: branch as String?,
+          employeeName: label(row['employee_name'], 200),
+          branchName: label(row['branch_name'], 120)));
+      previous = date;
+      previousId = eventId;
+      lastRaw = observed;
+    }
+    final cursor = data['next_before'];
+    OwnerAccessCursor? next;
+    if (data['has_more'] == true) {
+      if (rows.length != limit || cursor is! Map<String, dynamic> ||
+          cursor['event_id'] != previousId || cursor['observed_at'] != lastRaw) {
+        throw const FormatException('Invalid access page cursor');
+      }
+      next = OwnerAccessCursor(lastRaw!, previousId!);
+    } else if (cursor != null) {
+      throw const FormatException('Unexpected access page cursor');
+    }
+    return OwnerAccessEventPage(List.unmodifiable(events), next);
+  }
+
+
+  @override
+  Future<List<OwnerRosterEmployee>> rosterEmployees() async {
+    final request = http.Request('GET',
+        _url('/api/v1/staff/manage/attendance/work-roster/employees'))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Roster employee directory unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['employees'] is! List) {
+      throw const FormatException('Invalid roster employee directory');
+    }
+    final raw = data['employees'] as List;
+    if (raw.length >= 100) {
+      throw const FormatException('Incomplete roster employee directory');
+    }
+    final employees = <OwnerRosterEmployee>[];
+    String? previous;
+    for (final row in raw) {
+      if (row is! Map<String, dynamic> || !_rosterUuid(row['employee_id']) ||
+          !const {'COMPANY_OWNER', 'COMPANY_ADMIN', 'BRANCH_MANAGER',
+            'LOAN_OFFICER', 'CREDIT_ANALYST'}.contains(row['role']) ||
+          !row.containsKey('name')) {
+        throw const FormatException('Invalid roster employee');
+      }
+      final id = row['employee_id'] as String;
+      final name = row['name'];
+      if ((previous != null && id.compareTo(previous) <= 0) ||
+          (name != null && (name is! String || name.length > 200 || name.trim().isEmpty))) {
+        throw const FormatException('Invalid roster employee identity or name');
+      }
+      employees.add(OwnerRosterEmployee(id, row['role'] as String, name as String?));
+      previous = id;
+    }
+    return List.unmodifiable(employees);
+  }
+
+
+  @override
+  Future<StaffNotificationPage> attendanceNotifications(
+      {StaffNotificationCursor? before, int limit = 50}) async {
+    bool validKey(Object? value) => value is String && value.isNotEmpty &&
+        value.length <= 200 && RegExp(r'^[a-z0-9:-]+$').hasMatch(value);
+    if (limit < 1 || limit > 100 || (before != null &&
+        (!validKey(before.key) || DateTime.tryParse(before.createdAt)?.isUtc != true))) {
+      throw ArgumentError('Invalid notification cursor');
+    }
+    final request = http.Request('GET', _url('/api/v1/staff/attendance/notifications')
+      .replace(queryParameters: {'limit': '$limit',
+        if (before != null) 'before_at': before.createdAt,
+        if (before != null) 'before_key': before.key}))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Attendance inbox unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['notifications'] is! List ||
+        !data.containsKey('next_before')) {
+      throw const FormatException('Invalid notification page');
+    }
+    final rows = data['notifications'] as List;
+    if (rows.length > limit) throw const FormatException('Oversized notification page');
+    DateTime timestamp(Object? value) {
+      if (value is! String) throw const FormatException('Invalid notification timestamp');
+      final parsed = DateTime.parse(value);
+      if (!parsed.isUtc) throw const FormatException('Unverified notification timezone');
+      return parsed;
+    }
+    final notifications = <StaffAttendanceNotification>[];
+    final seen = <String>{};
+    DateTime? previous = before == null ? null : timestamp(before.createdAt);
+    String? previousKey = before?.key;
+    String? lastRaw;
+    for (final row in rows) {
+      if (row is! Map<String, dynamic> || !validKey(row['key']) ||
+          !_rosterUuid(row['employee_id']) ||
+          !const {'morning_reminder', 'reported_outside_perimeter',
+            'reported_inside_perimeter', 'reported_login_outside',
+            'staff_logged_out'}.contains(row['event_type']) ||
+          !row.containsKey('expires_at') || !row.containsKey('read_at')) {
+        throw const FormatException('Invalid notification fields');
+      }
+      final key = row['key'] as String;
+      final kind = row['event_type'] as String;
+      final employee = row['employee_id'] as String;
+      final observed = timestamp(row['observed_at']);
+      final created = timestamp(row['created_at']);
+      final expiry = row['expires_at'] == null ? null : timestamp(row['expires_at']);
+      final read = row['read_at'] == null ? null : timestamp(row['read_at']);
+      if (!seen.add(key) || observed.isAfter(created) ||
+          ((kind == 'morning_reminder') != (expiry != null)) ||
+          (expiry != null && !expiry.isAfter(observed)) ||
+          (read != null && read.isBefore(created)) ||
+          (previous != null && (created.isAfter(previous) ||
+            (created == previous && key.compareTo(previousKey!) >= 0)))) {
+        throw const FormatException('Invalid notification sequence');
+      }
+      notifications.add(StaffAttendanceNotification(key, employee, kind,
+          observed, created, expiry, read));
+      previous = created;
+      previousKey = key;
+      lastRaw = row['created_at'] as String;
+    }
+    final cursor = data['next_before'];
+    StaffNotificationCursor? next;
+    if (cursor != null) {
+      if (rows.length != limit || cursor is! Map<String, dynamic> ||
+          cursor['created_at'] != lastRaw || cursor['key'] != previousKey) {
+        throw const FormatException('Invalid notification page cursor');
+      }
+      next = StaffNotificationCursor(lastRaw!, previousKey!);
+    }
+    return StaffNotificationPage(List.unmodifiable(notifications), next);
+  }
+
+  static bool _rosterUuid(Object? value) => value is String &&
+      RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$').hasMatch(value);
+
+  static bool _rosterDate(String value) {
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
+    final date = DateTime.tryParse(value);
+    return date != null && date.year > 0 &&
+        date.toIso8601String().substring(0, 10) == value;
+  }
+
+  @override
+  Future<OwnerWorkRosterPage> workRoster(String workDate, {String? after, int limit = 50}) async {
+    if (!_rosterDate(workDate) || limit < 1 || limit > 100 ||
+        (after != null && !_rosterUuid(after))) {
+      throw ArgumentError('Invalid roster query');
+    }
+    final request = http.Request('GET', _url('/api/v1/staff/manage/attendance/work-roster')
+        .replace(queryParameters: {'work_date': workDate, 'limit': '$limit',
+          if (after != null) 'after': after}))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Work roster unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['rows'] is! List ||
+        !data.containsKey('next_after')) {
+      throw const FormatException('Invalid work roster page');
+    }
+    final raw = data['rows'] as List;
+    if (raw.length > limit) throw const FormatException('Oversized roster page');
+    final rows = <OwnerWorkRosterRow>[];
+    String? previous = after;
+    for (final row in raw) {
+      if (row is! Map<String, dynamic> || !_rosterUuid(row['employee_id']) ||
+          !_rosterUuid(row['recorded_by']) || row['scheduled_to_work'] is! bool ||
+          row['recorded_at'] is! String) {
+        throw const FormatException('Invalid roster row');
+      }
+      final employee = row['employee_id'] as String;
+      final recorded = DateTime.parse(row['recorded_at'] as String);
+      if (!recorded.isUtc || (previous != null && employee.compareTo(previous) <= 0)) {
+        throw const FormatException('Invalid roster ordering or time');
+      }
+      rows.add(OwnerWorkRosterRow(employee, row['scheduled_to_work'] as bool,
+          row['recorded_by'] as String, recorded));
+      previous = employee;
+    }
+    final cursor = data['next_after'];
+    if (cursor != null && (!_rosterUuid(cursor) || rows.length != limit || cursor != previous)) {
+      throw const FormatException('Invalid roster cursor');
+    }
+    return OwnerWorkRosterPage(List.unmodifiable(rows), cursor as String?);
+  }
+
+  @override
+  Future<bool> setWorkDay(String employeeId, String workDate, {required bool scheduledToWork}) async {
+    if (!_rosterUuid(employeeId) || !_rosterDate(workDate)) {
+      throw ArgumentError('Invalid employee or work date');
+    }
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) throw StateError('Secure owner action requires CSRF proof');
+    final request = http.Request('POST', _url('/api/v1/staff/manage/attendance/work-roster'))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString()})
+      ..body = jsonEncode({'employee_id': employeeId, 'work_date': workDate,
+        'scheduled_to_work': scheduledToWork});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 8192) {
+      throw StateError('Roster update not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['employee_id'] != employeeId ||
+        data['work_date'] != workDate || data['scheduled_to_work'] != scheduledToWork ||
+        data['changed'] is! bool) {
+      throw const FormatException('Invalid roster update receipt');
+    }
+    return data['changed'] as bool;
   }
 
   Future<List<Map<String, dynamic>>> _readOwnerList(

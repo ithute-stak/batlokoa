@@ -1,0 +1,50 @@
+# Candidate staging overlay ONLY. Combine with the reviewed employee pilot
+# and isolated staging deployment; never apply to the live demo stack.
+# Provision a dedicated PostgreSQL database and separate restricted roles
+# using the migration and grants before starting either service.
+services:
+  batlokoa-gateway:
+    environment:
+      BATLOKOA_ATTENDANCE_MODE: ${BATLOKOA_ATTENDANCE_MODE:-}
+      BATLOKOA_ATTENDANCE_ACK: ${BATLOKOA_ATTENDANCE_ACK:-}
+      BATLOKOA_ATTENDANCE_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Verified company required}
+      BATLOKOA_ATTENDANCE_GATEWAY_DATABASE_URL: ${BATLOKOA_ATTENDANCE_GATEWAY_DATABASE_URL:-}
+      BATLOKOA_ATTENDANCE_BRANCH_LOCATION: ${BATLOKOA_ATTENDANCE_BRANCH_LOCATION:-false}
+      BATLOKOA_ATTENDANCE_MONITOR: ${BATLOKOA_ATTENDANCE_MONITOR:-false}
+      BATLOKOA_ATTENDANCE_LOGIN_LOCATION: ${BATLOKOA_ATTENDANCE_LOGIN_LOCATION:-false}
+      BATLOKOA_ATTENDANCE_LOGOUT_AUDIT: ${BATLOKOA_ATTENDANCE_LOGOUT_AUDIT:-false}
+      BATLOKOA_ATTENDANCE_OWNER_ALERTS: ${BATLOKOA_ATTENDANCE_OWNER_ALERTS:-false}
+      BATLOKOA_ATTENDANCE_OWNER_ACCESS: ${BATLOKOA_ATTENDANCE_OWNER_ACCESS:-false}
+      BATLOKOA_ATTENDANCE_WORK_ROSTER: ${BATLOKOA_ATTENDANCE_WORK_ROSTER:-false}
+      BATLOKOA_ATTENDANCE_RECEIVER: ${BATLOKOA_ATTENDANCE_RECEIVER:-false}
+      BATLOKOA_ATTENDANCE_INBOX: ${BATLOKOA_ATTENDANCE_INBOX:-false}
+      BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN: ${BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN:-}
+      BATLOKOA_ATTENDANCE_RECEIVER_TOKEN: ${BATLOKOA_ATTENDANCE_RECEIVER_TOKEN:-}
+  batlokoa-attendance-worker:
+    profiles: [attendance-staging]
+    image: ghcr.io/ithute-stak/batlokoa-gateway:demo-${BATLOKOA_RELEASE_SHA:?Verified image commit required}
+    command: ["python", "-m", "backend.app.staff_attendance_worker_runtime"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    restart: "no"
+    stop_grace_period: 90s
+    healthcheck:
+      disable: true
+    depends_on:
+      batlokoa-gateway:
+        condition: service_healthy
+    environment:
+      STAFF_ATTENDANCE_WORKER_ENABLED: ${STAFF_ATTENDANCE_WORKER_ENABLED:-false}
+      STAFF_ATTENDANCE_WORKER_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Verified company required}
+      STAFF_ATTENDANCE_WORKER_DATABASE_URL: ${BATLOKOA_ATTENDANCE_WORKER_DATABASE_URL:-}
+      STAFF_ATTENDANCE_WORKER_RELEASE_AT: ${BATLOKOA_ATTENDANCE_RELEASE_AT:-}
+      STAFF_ATTENDANCE_RELAY_ORIGIN: https://attendance-staging.batlokoa.co.ls
+      STAFF_ATTENDANCE_RELAY_TOKEN: ${BATLOKOA_ATTENDANCE_RECEIVER_TOKEN:-}
+      STAFF_ATTENDANCE_LOANHUB_ORIGIN: https://attendance-staging-api.loanhub.co.ls
+      STAFF_ATTENDANCE_DIRECTORY_TOKEN: ${BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN:-}
+# Credentials must be provided through a restricted operator environment,
+# not committed to Git. Rendered Compose config may expose secrets.
+# No ports are published by the worker; no migration runs automatically.

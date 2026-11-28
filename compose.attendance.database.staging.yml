@@ -1,0 +1,54 @@
+# Add only to the isolated HTTPS attendance staging project.
+# Never attach to the production LoanHub database or public-edge network.
+services:
+  attendance-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: batlokoa_attendance_stage
+      POSTGRES_USER: attendance_stage_migrator
+      POSTGRES_PASSWORD_FILE: /run/secrets/attendance_stage_db_password
+    secrets:
+      - attendance_stage_db_password
+    volumes:
+      - attendance-stage-data:/var/lib/postgresql/data
+    networks: [attendance-db-private]
+    mem_limit: 768m
+    cpus: 0.75
+    pids_limit: 128
+    restart: "no"
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "attendance_stage_migrator", "-d", "batlokoa_attendance_stage"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  batlokoa-gateway-preview:
+    networks: [default, attendance-db-private]
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 128
+    depends_on:
+      attendance-db:
+        condition: service_healthy
+  batlokoa-attendance-worker-preview:
+    networks: [default, attendance-db-private]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    depends_on:
+      attendance-db:
+        condition: service_healthy
+  batlokoa-web-preview:
+    mem_limit: 128m
+    cpus: 0.25
+  batlokoa-edge:
+    mem_limit: 128m
+    cpus: 0.25
+networks:
+  attendance-db-private:
+    internal: true
+volumes:
+  attendance-stage-data:
+secrets:
+  attendance_stage_db_password:
+    file: ${BATLOKOA_STAGING_DB_PASSWORD_FILE:?Dedicated staging database password file required}

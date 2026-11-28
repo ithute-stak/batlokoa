@@ -1,0 +1,7 @@
+# Apply only to compose.staging.https.yml for isolated attendance browser testing.
+# This overlay enables same-origin GPS permission, not employee authentication
+# or backend attendance writes. Those require separately approved configuration.
+services:
+  batlokoa-web-preview:
+    volumes:
+      - ./deploy/nginx.attendance-staging.conf:/etc/nginx/conf.d/default.conf:ro

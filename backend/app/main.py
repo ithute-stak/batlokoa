@@ -21,6 +21,8 @@ from .staff_national_id_check_routes import router as staff_national_id_check_ro
 from .staff_registration_employer_routes import router as staff_registration_employer_router
 from .staff_registration_branches_routes import router as staff_registration_branches_router
 from .staff_registration_release_routes import router as staff_registration_release_router
+from .staff_branch_location_routes import router as staff_branch_location_router
+from .staff_attendance_routes import router as staff_attendance_router
 from fastapi.responses import JSONResponse
 
 app = FastAPI(
@@ -101,6 +103,12 @@ app.include_router(staff_registration_branches_router)
 
 # Informational release status is opt-in and never authorizes client creation.
 app.include_router(staff_registration_release_router)
+
+# Branch location registration has its own independent release gate.
+app.include_router(staff_branch_location_router)
+
+# Attendance writes require independent explicit configuration.
+app.include_router(staff_attendance_router)
 
 # Default deployment remains disabled. Explicit pilot configuration is required.
 configure_employee_pilot(app)
