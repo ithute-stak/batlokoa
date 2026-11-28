@@ -273,7 +273,7 @@ def owner_attendance_daily_summary(request: Request, work_date: date):
         return fail("ATTENDANCE_REPORT_DISABLED", 503)
     if not safe_staff_read_origin(request, cfg.public_origin):
         return fail("FORBIDDEN_ORIGIN", 403)
-    _, staff, denial = owner_context(request, require_verified=True)
+    record, staff, denial = owner_context(request, require_verified=True)
     if denial is not None:
         return denial
     if work_date > datetime.now(LESOTHO).date():
@@ -284,6 +284,14 @@ def owner_attendance_daily_summary(request: Request, work_date: date):
         return fail("OWNER_ONLY", 403)
     except (psycopg.Error, ValueError):
         return fail("ATTENDANCE_REPORT_UNAVAILABLE", 503)
+    if result["branches"]:
+        try:
+            _, branches = _owner_alert_labels(request, staff, record.access_token)
+            for row in result["branches"]:
+                row["branch_name"] = branches.get(UUID(row["branch_id"]))
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+            for row in result["branches"]:
+                row["branch_name"] = None
     return JSONResponse(result, headers=NO_STORE)
 
 
