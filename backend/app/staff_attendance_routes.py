@@ -742,3 +742,32 @@ def owner_set_work_shift(payload: WorkShiftDraft, request: Request):
         return fail("WORK_SHIFTS_UNAVAILABLE", 503)
     return JSONResponse({"changed": changed, "employee_id": str(employee.user_id),
                          "work_date": payload.work_date.isoformat()}, headers=NO_STORE)
+
+@router.get("/api/v1/staff/manage/attendance/punctuality", include_in_schema=False)
+def owner_punctuality_report(request: Request, work_date: date,
+                             after: UUID | None = Query(None),
+                             limit: int = Query(50, ge=1, le=100)):
+    store, record, staff, denial = _shift_context(request)
+    if denial is not None:
+        return denial
+    if getattr(request.app.state, "owner_attendance_reports_enabled", False) is not True:
+        return fail("ATTENDANCE_REPORT_DISABLED", 503)
+    if work_date > datetime.now(LESOTHO).date():
+        return fail("INVALID_REPORT_DATE", 422)
+    try:
+        result = store.read_punctuality(staff, work_date=work_date, after=after, limit=limit)
+    except StaffAccessDenied:
+        return fail("OWNER_ONLY", 403)
+    except ValueError:
+        return fail("INVALID_PUNCTUALITY_QUERY", 422)
+    except psycopg.Error:
+        return fail("ATTENDANCE_REPORT_UNAVAILABLE", 503)
+    if result["rows"]:
+        try:
+            employees, _ = _owner_alert_labels(request, staff, record.access_token)
+            for row in result["rows"]:
+                row["employee_name"] = employees.get(UUID(row["employee_id"]))
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+            for row in result["rows"]:
+                row["employee_name"] = None
+    return JSONResponse(result, headers=NO_STORE)
