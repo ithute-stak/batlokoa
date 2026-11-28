@@ -121,3 +121,46 @@ class AttendanceStore:
                  "clocked_in_at": row[2].isoformat(),
                  "clocked_out_at": row[3].isoformat() if row[3] is not None else None}
                 for row in rows]
+
+
+    def owner_daily_summary(self, identity, *, work_date):
+        """Read-only recorded attendance totals for one Lesotho calendar day.
+
+        Open sessions are counted separately, never estimated as worked time.
+        Closed sessions crossing midnight contribute only the overlapping time.
+        """
+        from datetime import date, time, timedelta
+        from zoneinfo import ZoneInfo
+
+        if (not isinstance(identity, VerifiedStaffIdentity)
+                or identity.active is not True
+                or identity.role != "COMPANY_OWNER"
+                or identity.company_wide_scope is not True):
+            raise StaffAccessDenied("Verified company owner required")
+        if type(work_date) is not date:
+            raise ValueError("Invalid report date")
+        zone = ZoneInfo("Africa/Maseru")
+        start = datetime.combine(work_date, time.min, tzinfo=zone)
+        end = start + timedelta(days=1)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT branch_id,
+                    COUNT(DISTINCT employee_id),
+                    COUNT(*) FILTER (WHERE clocked_out_at IS NULL),
+                    COUNT(*) FILTER (WHERE clocked_out_at IS NOT NULL),
+                    COALESCE(SUM(EXTRACT(EPOCH FROM
+                        LEAST(clocked_out_at, %s) - GREATEST(clocked_in_at, %s)))
+                        FILTER (WHERE clocked_out_at IS NOT NULL), 0)
+                    FROM staff_attendance_sessions
+                    WHERE company_id = %s AND clocked_in_at < %s
+                      AND (clocked_out_at IS NULL OR clocked_out_at > %s)
+                    GROUP BY branch_id ORDER BY branch_id""",
+                    (end, start, identity.company_id, end, start))
+                rows = cur.fetchall()
+        return {"work_date": work_date.isoformat(), "timezone": "Africa/Maseru",
+                "branches": [{"branch_id": str(row[0]),
+                              "employees_with_records": row[1],
+                              "open_sessions": row[2],
+                              "closed_sessions": row[3],
+                              "recorded_seconds": int(row[4])}
+                             for row in rows]}
