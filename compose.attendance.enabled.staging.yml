@@ -1,0 +1,53 @@
+# Isolated attendance HTTPS staging overlay.
+# Combine ONLY with compose.staging.https.yml and
+# compose.attendance.browser.staging.yml. No production key or database.
+services:
+  batlokoa-gateway-preview:
+    environment:
+      BATLOKOA_EMPLOYEE_PILOT_MODE: limited_read_only
+      BATLOKOA_EMPLOYEE_PILOT_ACK: VOLATILE_SESSIONS_10_MINUTES_NO_WRITES
+      BATLOKOA_EMPLOYEE_PUBLIC_ORIGIN: https://attendance-staging.batlokoa.co.ls
+      BATLOKOA_EMPLOYEE_LOANHUB_ORIGIN: https://attendance-staging-api.loanhub.co.ls
+      BATLOKOA_EMPLOYEE_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Synthetic staging company required}
+      BATLOKOA_OWNER_LOGIN_LOANHUB_ACTIVE_MEMBERSHIP: "false"
+      BATLOKOA_ATTENDANCE_MODE: reviewed_staging
+      BATLOKOA_ATTENDANCE_ACK: ${BATLOKOA_ATTENDANCE_ACK:?Explicit staging approval required}
+      BATLOKOA_ATTENDANCE_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Synthetic staging company required}
+      BATLOKOA_ATTENDANCE_GATEWAY_DATABASE_URL: ${BATLOKOA_ATTENDANCE_GATEWAY_DATABASE_URL:?Restricted staging gateway DSN required}
+      BATLOKOA_ATTENDANCE_BRANCH_LOCATION: "true"
+      BATLOKOA_ATTENDANCE_MONITOR: "true"
+      BATLOKOA_ATTENDANCE_LOGIN_LOCATION: "true"
+      BATLOKOA_ATTENDANCE_LOGOUT_AUDIT: "true"
+      BATLOKOA_ATTENDANCE_OWNER_ALERTS: "true"
+      BATLOKOA_ATTENDANCE_OWNER_ACCESS: "true"
+      BATLOKOA_ATTENDANCE_WORK_ROSTER: "true"
+      BATLOKOA_ATTENDANCE_RECEIVER: "true"
+      BATLOKOA_ATTENDANCE_INBOX: "true"
+      BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN: ${BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN:?Dedicated staging directory token required}
+      BATLOKOA_ATTENDANCE_RECEIVER_TOKEN: ${BATLOKOA_ATTENDANCE_RECEIVER_TOKEN:?Dedicated staging receiver token required}
+    volumes:
+      - ${BATLOKOA_STAGING_LOANHUB_PUBLIC_KEY:?Staging verification public key required}:/run/secrets/loanhub_jwt_public.pem:ro
+  batlokoa-attendance-worker-preview:
+    image: batlokoa-gateway:staging-https
+    command: ["python", "-m", "backend.app.staff_attendance_worker_runtime"]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    restart: "no"
+    stop_grace_period: 90s
+    healthcheck:
+      disable: true
+    depends_on:
+      batlokoa-gateway-preview:
+        condition: service_healthy
+    environment:
+      STAFF_ATTENDANCE_WORKER_ENABLED: ${STAFF_ATTENDANCE_WORKER_ENABLED:-false}
+      STAFF_ATTENDANCE_WORKER_COMPANY_ID: ${BATLOKOA_EMPLOYEE_COMPANY_ID:?Synthetic staging company required}
+      STAFF_ATTENDANCE_WORKER_DATABASE_URL: ${BATLOKOA_ATTENDANCE_WORKER_DATABASE_URL:?Restricted staging worker DSN required}
+      STAFF_ATTENDANCE_WORKER_RELEASE_AT: ${BATLOKOA_ATTENDANCE_RELEASE_AT:?Explicit staging cutoff required}
+      STAFF_ATTENDANCE_RELAY_ORIGIN: https://attendance-staging.batlokoa.co.ls
+      STAFF_ATTENDANCE_LOANHUB_ORIGIN: https://attendance-staging-api.loanhub.co.ls
+      STAFF_ATTENDANCE_RELAY_TOKEN: ${BATLOKOA_ATTENDANCE_RECEIVER_TOKEN:?Dedicated staging receiver token required}
+      STAFF_ATTENDANCE_DIRECTORY_TOKEN: ${BATLOKOA_ATTENDANCE_DIRECTORY_TOKEN:?Dedicated staging directory token required}
