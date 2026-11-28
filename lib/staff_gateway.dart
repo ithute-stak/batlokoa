@@ -310,6 +310,17 @@ class OwnerAttendanceAlertPage {
   const OwnerAttendanceAlertPage(this.alerts, this.nextAfter, this.hasMore);
 }
 
+class OwnerDailyAttendanceBranch {
+  final String branchId;
+  final int employeesWithRecords, openSessions, closedSessions, recordedSeconds;
+  const OwnerDailyAttendanceBranch(this.branchId, this.employeesWithRecords,
+      this.openSessions, this.closedSessions, this.recordedSeconds);
+}
+
+abstract class OwnerAttendanceReportGateway {
+  Future<List<OwnerDailyAttendanceBranch>> dailyAttendanceSummary(String workDate);
+}
+
 abstract class OwnerAttendanceInboxGateway {
   Future<OwnerAttendanceAlertPage> attendanceAlerts({int after = 0, int limit = 50});
 }
@@ -423,7 +434,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway, StaffNotificationGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway, StaffNotificationGateway, OwnerAttendanceReportGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -913,6 +924,46 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
       throw const FormatException('Inconsistent monitoring response');
     }
     return StaffMonitorReceipt(session.id, reading, confirmed, observed, transition);
+  }
+
+  @override
+  Future<List<OwnerDailyAttendanceBranch>> dailyAttendanceSummary(String workDate) async {
+    if (!_rosterDate(workDate)) throw ArgumentError('Invalid report date');
+    final request = http.Request('GET',
+        _url('/api/v1/staff/manage/attendance/daily-summary')
+            .replace(queryParameters: {'work_date': workDate}))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Attendance report unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['work_date'] != workDate ||
+        data['timezone'] != 'Africa/Maseru' || data['branches'] is! List) {
+      throw const FormatException('Invalid attendance report');
+    }
+    final seen = <String>{};
+    final result = <OwnerDailyAttendanceBranch>[];
+    for (final row in data['branches'] as List) {
+      if (row is! Map<String, dynamic>) {
+        throw const FormatException('Invalid attendance branch');
+      }
+      final id = row['branch_id'];
+      if (id is! String || !_rosterUuid(id) || !seen.add(id)) {
+        throw const FormatException('Invalid or duplicate attendance branch');
+      }
+      int count(String key) {
+        final value = row[key];
+        if (value is! int || value < 0) {
+          throw const FormatException('Invalid attendance count');
+        }
+        return value;
+      }
+      result.add(OwnerDailyAttendanceBranch(id, count('employees_with_records'),
+          count('open_sessions'), count('closed_sessions'), count('recorded_seconds')));
+    }
+    return List.unmodifiable(result);
   }
 
   @override
