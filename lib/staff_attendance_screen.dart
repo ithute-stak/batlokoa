@@ -123,6 +123,14 @@ class _StaffAttendanceScreenState extends State<StaffAttendanceScreen> {
     return '${date.substring(0, 10)} ${date.substring(11, 16)} (Lesotho)';
   }
 
+  String _recordedDuration(StaffAttendanceSession session) {
+    final end = session.clockedOutAt;
+    if (end == null) return 'Session still open';
+    final duration = end.difference(session.clockedInAt);
+    if (duration.isNegative) return 'Recorded duration unavailable';
+    return 'Recorded duration: ${duration.inHours}h ${duration.inMinutes.remainder(60)}m';
+  }
+
   @override
   Widget build(BuildContext context) {
     final open = _open;
@@ -216,6 +224,8 @@ class _StaffAttendanceScreenState extends State<StaffAttendanceScreen> {
                         style: theme.textTheme.titleSmall),
                     Text('In: ${_time(session.clockedInAt)}\n'
                         'Out: ${session.clockedOutAt == null ? "Open" : _time(session.clockedOutAt!)}'),
+                    const SizedBox(height: 4),
+                    Text(_recordedDuration(session), style: theme.textTheme.bodyMedium),
                     const Divider(),
                   ]),
                 ),
