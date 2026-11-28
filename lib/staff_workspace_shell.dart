@@ -240,6 +240,9 @@ class _StaffWorkspaceShellState extends State<StaffWorkspaceShell> with WidgetsB
     open(OwnerWorkRosterScreen(
       roster: widget.gateway as OwnerWorkRosterGateway,
       directory: widget.gateway as OwnerRosterEmployeeGateway,
+      shifts: const bool.fromEnvironment('OWNER_WORK_SHIFTS_ENABLED') &&
+          widget.gateway is OwnerWorkShiftGateway
+          ? widget.gateway as OwnerWorkShiftGateway : null,
     ));
   }
 
