@@ -107,7 +107,8 @@ class _OwnerAttendanceReportScreenState extends State<OwnerAttendanceReportScree
             for (final row in _rows)
               Card(child: Padding(padding: const EdgeInsets.all(16),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Branch: ${row.branchId}', style: theme.textTheme.titleMedium),
+                  Text(row.branchName ?? 'Unknown branch (ID: ${row.branchId})',
+                      style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
                   Text('Employees with records: ${row.employeesWithRecords}'),
                   Text('Open sessions: ${row.openSessions}'),
