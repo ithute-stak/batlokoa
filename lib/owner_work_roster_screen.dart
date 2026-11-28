@@ -147,6 +147,47 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
     await _load(notice: notice);
   }
 
+  Widget _rosterSummary(BuildContext context) {
+    final working = _employees.where((e) => _schedule[e.employeeId] == true).length;
+    final nonWorking = _employees.where((e) => _schedule[e.employeeId] == false).length;
+    final unknown = _employees.length - working - nonWorking;
+    final theme = Theme.of(context);
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 680 &&
+          BfsResponsive.textScale(context) <= 1.35 ? 4 :
+          constraints.maxWidth >= 340 &&
+          BfsResponsive.textScale(context) <= 1.35 ? 2 : 1;
+      final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+      Widget metric(String label, int count) => SizedBox(
+        width: width,
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: theme.textTheme.bodyMedium),
+              const SizedBox(height: 8),
+              Text('$count', style: theme.textTheme.headlineMedium?.copyWith(
+                  color: theme.colorScheme.primary, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        ),
+      );
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Schedule overview', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 8),
+        const Text('Planned schedules only, not actual attendance or absence.'),
+        const SizedBox(height: 12),
+        Wrap(spacing: 12, runSpacing: 12, children: [
+          metric('Eligible employees', _employees.length),
+          metric('Scheduled to work', working),
+          metric('Non-working day', nonWorking),
+          metric('Schedule unknown', unknown),
+        ]),
+      ]);
+    });
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Employee working schedules'), actions: [
@@ -154,7 +195,7 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
         onPressed: _busy || !_foreground ? null : () => _load()),
     ]),
     body: SafeArea(child: Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 800),
+      constraints: const BoxConstraints(maxWidth: 1200),
       child: ListView(padding: BfsResponsive.pagePadding(context), children: [
         const Text('Daily work roster', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
@@ -166,6 +207,11 @@ class _OwnerWorkRosterScreenState extends State<OwnerWorkRosterScreen>
         if (_notice != null) Text(_notice!),
         if (_failed) const Text('Working schedule unavailable or access denied. Refresh to retry.'),
         if (!_busy && !_failed && _employees.isEmpty) const Text('No eligible employees returned.'),
+        if (!_busy && !_failed && _foreground && _employees.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _rosterSummary(context),
+          const SizedBox(height: 24),
+        ],
         for (final employee in _employees)
           Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
             crossAxisAlignment: CrossAxisAlignment.start, children: [
