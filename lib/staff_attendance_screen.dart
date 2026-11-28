@@ -132,55 +132,114 @@ class _StaffAttendanceScreenState extends State<StaffAttendanceScreen> {
         IconButton(onPressed: _busy ? null : _reload,
             tooltip: 'Refresh attendance', icon: const Icon(Icons.refresh)),
       ]),
-      body: SafeArea(child: Center(child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640),
-        child: ListView(padding: BfsResponsive.pagePadding(context), children: [
-          Text(!_verified ? 'Attendance status unverified'
-              : open == null ? 'Clocked out' : 'Clocked in',
-              style: Theme.of(context).textTheme.headlineSmall),
-          if (open != null && _verified)
-            Text('Clocked in at ${_time(open.clockedInAt)}'),
-          const SizedBox(height: 16),
-          const Text('You must be within the registered 10-metre office perimeter. '
-              'Location is requested only when you press a clocking button.'),
-          const SizedBox(height: 16),
-          if (open == null)
-            DropdownButtonFormField<String>(
-              initialValue: _branch,
-              decoration: const InputDecoration(labelText: 'Assigned branch'),
-              items: _authorized.entries.map((entry) => DropdownMenuItem(
-                value: entry.key, child: Text(entry.value),
-              )).toList(),
-              onChanged: _busy || !_verified ? null : (value) =>
-                  setState(() { _branch = value; }),
-            )
-          else
-            Text('Branch: ${_authorized[open.branchId] ?? "Previous assigned branch"}'),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            key: const Key('staff-attendance-record'),
-            onPressed: _busy || !_verified || selected == null ||
-                !_authorized.containsKey(selected) ? null : _record,
-            icon: const Icon(Icons.my_location),
-            label: Text(open == null ? 'Clock In' : 'Clock Out'),
+      body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 1000 &&
+            BfsResponsive.textScale(context) <= 1.35;
+        final theme = Theme.of(context);
+        final colors = theme.colorScheme;
+        final clocking = Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('Current attendance', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Text(!_verified ? 'Attendance status unverified'
+                  : open == null ? 'Clocked out' : 'Clocked in',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: _verified && open != null ? colors.primary : null,
+                    fontWeight: FontWeight.w700)),
+              if (open != null && _verified)
+                Text('Clocked in at ${_time(open.clockedInAt)}'),
+              const SizedBox(height: 20),
+              if (open == null)
+                DropdownButtonFormField<String>(
+                  initialValue: _branch,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Assigned branch'),
+                  items: _authorized.entries.map((entry) => DropdownMenuItem(
+                    value: entry.key, child: Text(entry.value,
+                        overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: _busy || !_verified ? null : (value) =>
+                      setState(() { _branch = value; }),
+                )
+              else
+                Text('Branch: ${_authorized[open.branchId] ?? "Previous assigned branch"}'),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                key: const Key('staff-attendance-record'),
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 52),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+                onPressed: _busy || !_verified || selected == null ||
+                    !_authorized.containsKey(selected) ? null : _record,
+                icon: const Icon(Icons.my_location),
+                label: Text(open == null ? 'Clock In' : 'Clock Out'),
+              ),
+              if (_busy) const Padding(padding: EdgeInsets.only(top: 12),
+                  child: LinearProgressIndicator()),
+              if (_message != null)
+                Padding(padding: const EdgeInsets.only(top: 12),
+                    child: Semantics(liveRegion: true, child: Text(_message!))),
+            ]),
           ),
-          if (_busy) const LinearProgressIndicator(),
-          if (_message != null)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Semantics(liveRegion: true, child: Text(_message!))),
-          const SizedBox(height: 24),
-          Text('Recent attendance', style: Theme.of(context).textTheme.titleLarge),
-          if (!_historyAvailable) const Text('Attendance history unavailable.')
-          else if (_history.isEmpty) const Text('No attendance sessions recorded.')
-          else for (final session in _history)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(_authorized[session.branchId] ?? 'Previous assigned branch'),
-              subtitle: Text('In: ${_time(session.clockedInAt)}\n'
-                  'Out: ${session.clockedOutAt == null ? "Open" : _time(session.clockedOutAt!)}'),
-            ),
-        ]),
-      ))),
+        );
+        final location = Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.location_on_outlined, color: colors.primary),
+              const SizedBox(height: 8),
+              Text('Office location', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              const Text('You must be within the registered 10-metre office perimeter. '
+                  'Location is requested only when you press a clocking button.'),
+            ]),
+          ),
+        );
+        final history = Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('Recent attendance', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 12),
+              if (!_historyAvailable) const Text('Attendance history unavailable.')
+              else if (_history.isEmpty) const Text('No attendance sessions recorded.')
+              else for (final session in _history)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_authorized[session.branchId] ?? 'Previous assigned branch',
+                        style: theme.textTheme.titleSmall),
+                    Text('In: ${_time(session.clockedInAt)}\n'
+                        'Out: ${session.clockedOutAt == null ? "Open" : _time(session.clockedOutAt!)}'),
+                    const Divider(),
+                  ]),
+                ),
+            ]),
+          ),
+        );
+        return Center(child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: wide ? 1440 : 680),
+          child: ListView(padding: BfsResponsive.pagePadding(context), children: [
+            if (wide)
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Column(children: [
+                  clocking, const SizedBox(height: 16), location,
+                ])),
+                const SizedBox(width: 20),
+                Expanded(child: history),
+              ])
+            else ...[
+              clocking, const SizedBox(height: 16), location,
+              const SizedBox(height: 16), history,
+            ],
+          ]),
+        ));
+      })),
     );
   }
 }
