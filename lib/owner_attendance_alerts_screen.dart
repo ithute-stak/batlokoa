@@ -163,39 +163,75 @@ class _OwnerAttendanceAlertsScreenState extends State<OwnerAttendanceAlertsScree
         IconButton(tooltip: 'Refresh alerts', icon: const Icon(Icons.refresh),
           onPressed: _busy ? null : () => _load(reset: true)),
       ]),
-      body: SafeArea(child: Center(child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: ListView(padding: BfsResponsive.pagePadding(context), children: [
-          const Text('Confirmed perimeter observations',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          const Text('These events reflect device-reported location, not independent '
-              'proof of physical presence. Missing GPS or network access is not a departure.'),
-          const SizedBox(height: 16),
-          Text(_failed ? 'Automatic refresh paused. Refresh to retry.'
-              : _alerts.length >= _maxPollPages * _pageSize
-                  ? 'Large history: use manual refresh.'
-                  : 'Automatic refresh every 30 seconds while this screen is active.'),
-          if (_busy) const LinearProgressIndicator(),
+      body: SafeArea(child: LayoutBuilder(builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 1000 &&
+            BfsResponsive.textScale(context) <= 1.35;
+        final theme = Theme.of(context);
+        final summary = Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Confirmed perimeter observations',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text('These events reflect device-reported location, not independent '
+                  'proof of physical presence. Missing GPS or network access is not a departure.'),
+              const SizedBox(height: 16),
+              Text(_failed ? 'Automatic refresh paused. Refresh to retry.'
+                  : _alerts.length >= _maxPollPages * _pageSize
+                      ? 'Large history: use manual refresh.'
+                      : 'Automatic refresh every 30 seconds while this screen is active.'),
+              if (_busy) const Padding(padding: EdgeInsets.only(top: 12),
+                  child: LinearProgressIndicator()),
+            ]),
+          ),
+        );
+        final feed = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Alert history', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
           if (_failed)
             const Text('Attendance alerts unavailable or access denied.')
           else if (!_busy && _alerts.isEmpty)
             const Text('No confirmed perimeter alerts recorded.'),
           for (final alert in _alerts.reversed)
-            Card(child: ListTile(
-              leading: Icon(alert.eventType == 'reported_outside_perimeter'
-                  ? Icons.warning_amber_rounded : Icons.check_circle_outline),
-              title: Text(alert.eventType == 'reported_outside_perimeter'
-                  ? 'Reported outside office perimeter' : 'Reported return inside perimeter'),
-              subtitle: Text('Employee: ${alert.employeeName ?? "Unknown name (ID: ${alert.employeeId})"}\n'
-                  'Branch: ${alert.branchName ?? "Unknown name (ID: ${alert.branchId})"}\n'
-                  'Session: ${alert.sessionId}\n${_time(alert.observedAt)}'),
-            )),
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(alert.eventType == 'reported_outside_perimeter'
+                      ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                      color: theme.colorScheme.primary),
+                  const SizedBox(height: 8),
+                  Text(alert.eventType == 'reported_outside_perimeter'
+                      ? 'Reported outside office perimeter' : 'Reported return inside perimeter',
+                      style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text('Employee: ${alert.employeeName ?? "Unknown name (ID: ${alert.employeeId})"}\n'
+                      'Branch: ${alert.branchName ?? "Unknown name (ID: ${alert.branchId})"}\n'
+                      'Session: ${alert.sessionId}\n${_time(alert.observedAt)}'),
+                ]),
+              ),
+            ),
           if (_more && !_failed)
             OutlinedButton(onPressed: _busy ? null : () => _load(),
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
               child: const Text('Load more alerts')),
-        ]),
-      ))),
+        ]);
+        return Center(child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: wide ? 1440 : 760),
+          child: ListView(padding: BfsResponsive.pagePadding(context), children: [
+            if (wide)
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(flex: 2, child: summary),
+                const SizedBox(width: 20),
+                Expanded(flex: 3, child: feed),
+              ])
+            else ...[summary, const SizedBox(height: 20), feed],
+          ]),
+        ));
+      })),
     );
   }
 }
