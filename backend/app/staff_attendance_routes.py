@@ -262,6 +262,31 @@ def _owner_alert_labels(request, staff, token):
     return employees, branches
 
 
+@router.get("/api/v1/staff/manage/attendance/daily-summary", include_in_schema=False)
+def owner_attendance_daily_summary(request: Request, work_date: date):
+    """Read-only branch aggregates; never return raw location information."""
+    cfg = _config(request)
+    store = getattr(request.app.state, "staff_attendance_store", None)
+    if (cfg is None or not isinstance(store, AttendanceStore)
+            or getattr(request.app.state, "staff_attendance_enabled", False) is not True
+            or getattr(request.app.state, "owner_attendance_reports_enabled", False) is not True):
+        return fail("ATTENDANCE_REPORT_DISABLED", 503)
+    if not safe_staff_read_origin(request, cfg.public_origin):
+        return fail("FORBIDDEN_ORIGIN", 403)
+    _, staff, denial = owner_context(request, require_verified=True)
+    if denial is not None:
+        return denial
+    if work_date > datetime.now(LESOTHO).date():
+        return fail("INVALID_REPORT_DATE", 422)
+    try:
+        result = store.owner_daily_summary(staff, work_date=work_date)
+    except StaffAccessDenied:
+        return fail("OWNER_ONLY", 403)
+    except (psycopg.Error, ValueError):
+        return fail("ATTENDANCE_REPORT_UNAVAILABLE", 503)
+    return JSONResponse(result, headers=NO_STORE)
+
+
 @router.get("/api/v1/staff/manage/attendance/alerts", include_in_schema=False)
 def owner_attendance_alerts(request: Request,
                             after: int = Query(0, ge=0, le=9223372036854775807),
