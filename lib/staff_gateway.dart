@@ -313,8 +313,9 @@ class OwnerAttendanceAlertPage {
 class OwnerDailyAttendanceBranch {
   final String branchId;
   final int employeesWithRecords, openSessions, closedSessions, recordedSeconds;
+  final String? branchName;
   const OwnerDailyAttendanceBranch(this.branchId, this.employeesWithRecords,
-      this.openSessions, this.closedSessions, this.recordedSeconds);
+      this.openSessions, this.closedSessions, this.recordedSeconds, {this.branchName});
 }
 
 abstract class OwnerAttendanceReportGateway {
@@ -960,8 +961,13 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
         }
         return value;
       }
+      final name = row['branch_name'];
+      if (name != null && (name is! String || name.trim().isEmpty || name.length > 120)) {
+        throw const FormatException('Invalid attendance branch name');
+      }
       result.add(OwnerDailyAttendanceBranch(id, count('employees_with_records'),
-          count('open_sessions'), count('closed_sessions'), count('recorded_seconds')));
+          count('open_sessions'), count('closed_sessions'), count('recorded_seconds'),
+          branchName: name as String?));
     }
     return List.unmodifiable(result);
   }
