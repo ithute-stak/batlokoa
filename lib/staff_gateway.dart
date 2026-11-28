@@ -211,7 +211,11 @@ class StaffCreatedClientReceipt {
 
   factory StaffCreatedClientReceipt.fromJson(Map<String, dynamic> data) {
     final id = data['client_account_id'];
-    if (data['registered'] != true || id is! String ||
+    if (data.length != 3 ||
+        !data.containsKey('registered') ||
+        !data.containsKey('client_account_id') ||
+        !data.containsKey('replayed') ||
+        data['registered'] != true || id is! String ||
         !RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(id) ||
         data['replayed'] is! bool) {
       throw const FormatException('Untrusted client registration confirmation');
