@@ -61,6 +61,33 @@ Future<void> tapClock(WidgetTester tester) async {
 }
 
 void main() {
+  // Exercise the real clocking controls across phone, tablet and desktop sizes.
+  for (final size in const [
+    Size(320, 640), Size(390, 844), Size(768, 1024),
+    Size(740, 360), Size(1280, 800), Size(1920, 1080),
+  ]) {
+    testWidgets('attendance clocking fits ${size.width}x${size.height}',
+        (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final gateway = FakeAttendance();
+      await open(tester, gateway);
+      expect(tester.takeException(), isNull);
+      await tapClock(tester);
+      expect(gateway.writes, 1);
+      expect(find.text('Clocked in'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tapClock(tester);
+      expect(gateway.writes, 2);
+      expect(find.text('Clocked out'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('clock in and out reflect authoritative status', (tester) async {
     final gateway = FakeAttendance();
     await open(tester, gateway);
