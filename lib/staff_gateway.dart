@@ -399,6 +399,25 @@ class OwnerWorkRosterPage {
   const OwnerWorkRosterPage(this.rows, this.nextAfter);
 }
 
+class OwnerWorkShift {
+  final String employeeId;
+  final DateTime startsAt, endsAt;
+  final int graceMinutes;
+  const OwnerWorkShift(this.employeeId, this.startsAt, this.endsAt, this.graceMinutes);
+}
+
+class OwnerWorkShiftPage {
+  final List<OwnerWorkShift> rows;
+  final String? nextAfter;
+  const OwnerWorkShiftPage(this.rows, this.nextAfter);
+}
+
+abstract class OwnerWorkShiftGateway {
+  Future<OwnerWorkShiftPage> workShifts(String workDate, {String? after, int limit = 50});
+  Future<bool> setWorkShift(String employeeId, String workDate, {
+    required DateTime startsAt, required DateTime endsAt, required int graceMinutes});
+}
+
 abstract class OwnerWorkRosterGateway {
   Future<OwnerWorkRosterPage> workRoster(String workDate, {String? after, int limit = 50});
   Future<bool> setWorkDay(String employeeId, String workDate, {required bool scheduledToWork});
@@ -435,7 +454,7 @@ class DisabledStaffGateway implements StaffGateway {
 
 /// Browser-compatible session gateway. Must be used on the approved HTTPS
 /// Batlokoa origin; never transmit credentials to an arbitrary URL.
-class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway, StaffNotificationGateway, OwnerAttendanceReportGateway {
+class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, OwnerStaffManagementGateway, StaffNationalIdGateway, StaffRegistrationReadinessGateway, StaffRegistrationEmployerGateway, StaffRegistrationBranchGateway, StaffNewClientCreationGateway, StaffBranchLocationGateway, StaffAttendanceGateway, StaffMonitoringGateway, OwnerAttendanceInboxGateway, StaffLocationLoginGateway, OwnerAccessInboxGateway, OwnerWorkRosterGateway, OwnerRosterEmployeeGateway, StaffNotificationGateway, OwnerAttendanceReportGateway, OwnerWorkShiftGateway {
   final http.Client client;
   final Uri origin;
   final String? Function()? csrfToken;
@@ -1314,6 +1333,88 @@ class SameOriginStaffGateway implements StaffGateway, StaffSecondFactorGateway, 
         data['work_date'] != workDate || data['scheduled_to_work'] != scheduledToWork ||
         data['changed'] is! bool) {
       throw const FormatException('Invalid roster update receipt');
+    }
+    return data['changed'] as bool;
+  }
+
+  @override
+  Future<OwnerWorkShiftPage> workShifts(String workDate, {String? after, int limit = 50}) async {
+    if (!_rosterDate(workDate) || limit < 1 || limit > 100 ||
+        (after != null && !_rosterUuid(after))) {
+      throw ArgumentError('Invalid shift query');
+    }
+    final request = http.Request('GET', _url('/api/v1/staff/manage/attendance/work-shifts')
+        .replace(queryParameters: {'work_date': workDate, 'limit': '$limit',
+          if (after != null) 'after': after}))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Cache-Control': 'no-store'});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 131072) {
+      throw StateError('Work shifts unavailable or access denied');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['rows'] is! List ||
+        !data.containsKey('next_after')) {
+      throw const FormatException('Invalid work shift page');
+    }
+    final raw = data['rows'] as List;
+    if (raw.length > limit) throw const FormatException('Oversized shift page');
+    final seen = <String>{};
+    final rows = <OwnerWorkShift>[];
+    for (final row in raw) {
+      if (row is! Map<String, dynamic>) throw const FormatException('Invalid shift');
+      final id = row['employee_id'], start = row['starts_at'], end = row['ends_at'];
+      final grace = row['grace_minutes'];
+      if (id is! String || !_rosterUuid(id) || !seen.add(id) ||
+          start is! String || end is! String || grace is! int || grace < 0 || grace > 120) {
+        throw const FormatException('Invalid shift fields');
+      }
+      final startsAt = DateTime.parse(start), endsAt = DateTime.parse(end);
+      if (!startsAt.isUtc || !endsAt.isUtc ||
+          startsAt.add(const Duration(hours: 2)).toIso8601String().substring(0, 10) != workDate ||
+          endsAt.difference(startsAt) <= Duration(minutes: grace) ||
+          endsAt.difference(startsAt) > const Duration(hours: 24)) {
+        throw const FormatException('Invalid shift interval');
+      }
+      rows.add(OwnerWorkShift(id, startsAt, endsAt, grace));
+    }
+    final cursor = data['next_after'];
+    if (cursor != null && (cursor is! String || !_rosterUuid(cursor) ||
+        rows.isEmpty || cursor != rows.last.employeeId || cursor == after)) {
+      throw const FormatException('Invalid shift cursor');
+    }
+    return OwnerWorkShiftPage(List.unmodifiable(rows), cursor as String?);
+  }
+
+  @override
+  Future<bool> setWorkShift(String employeeId, String workDate, {
+    required DateTime startsAt, required DateTime endsAt, required int graceMinutes}) async {
+    final start = startsAt.toUtc(), end = endsAt.toUtc();
+    if (!_rosterUuid(employeeId) || !_rosterDate(workDate) ||
+        start.add(const Duration(hours: 2)).toIso8601String().substring(0, 10) != workDate ||
+        graceMinutes < 0 || graceMinutes > 120 ||
+        end.difference(start) <= Duration(minutes: graceMinutes) ||
+        end.difference(start) > const Duration(hours: 24)) {
+      throw ArgumentError('Invalid shift settings');
+    }
+    final csrf = csrfToken?.call();
+    if (csrf == null || csrf.isEmpty) throw StateError('Secure owner action requires CSRF proof');
+    final request = http.Request('POST', _url('/api/v1/staff/manage/attendance/work-shifts'))
+      ..followRedirects = false
+      ..headers.addAll({'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Cache-Control': 'no-store', 'x-csrf-token': csrf,
+        if (!browserManagedOrigin) 'Origin': origin.toString()})
+      ..body = jsonEncode({'employee_id': employeeId, 'work_date': workDate,
+        'starts_at': start.toIso8601String(), 'ends_at': end.toIso8601String(),
+        'grace_minutes': graceMinutes});
+    final response = await http.Response.fromStream(await client.send(request));
+    if (response.statusCode != 200 || response.bodyBytes.length > 8192) {
+      throw StateError('Shift update not confirmed');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || data['employee_id'] != employeeId ||
+        data['work_date'] != workDate || data['changed'] is! bool) {
+      throw const FormatException('Invalid shift update receipt');
     }
     return data['changed'] as bool;
   }
