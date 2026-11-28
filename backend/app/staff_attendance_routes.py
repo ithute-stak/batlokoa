@@ -654,3 +654,91 @@ def staff_notifications(request: Request,
     except (psycopg.Error, ValueError):
         return fail("ATTENDANCE_INBOX_UNAVAILABLE", 503)
     return JSONResponse(result, headers=NO_STORE)
+
+
+class WorkShiftDraft(BaseModel):
+    employee_id: UUID
+    work_date: date
+    starts_at: datetime
+    ends_at: datetime
+    grace_minutes: int = Field(ge=0, le=120, strict=True)
+    model_config = {"extra": "forbid"}
+
+
+def _shift_context(request, *, write=False):
+    from .staff_work_shift_store import WorkShiftStore
+    _, record, staff, denial = _roster_context(request, write=write)
+    if denial is not None:
+        return None, None, None, denial
+    store = getattr(request.app.state, "staff_work_shift_store", None)
+    if (not isinstance(store, WorkShiftStore)
+            or getattr(request.app.state, "owner_work_shifts_enabled", False) is not True):
+        return None, None, None, fail("WORK_SHIFTS_DISABLED", 503)
+    return store, record, staff, None
+
+
+@router.get("/api/v1/staff/manage/attendance/work-shifts", include_in_schema=False)
+def owner_work_shifts(request: Request, work_date: date,
+                      after: UUID | None = Query(None),
+                      limit: int = Query(50, ge=1, le=100)):
+    store, _, staff, denial = _shift_context(request)
+    if denial is not None:
+        return denial
+    try:
+        result = store.read_day(staff, work_date=work_date, after=after, limit=limit)
+    except StaffAccessDenied:
+        return fail("OWNER_ONLY", 403)
+    except ValueError:
+        return fail("INVALID_SHIFT_QUERY", 422)
+    except psycopg.Error:
+        return fail("WORK_SHIFTS_UNAVAILABLE", 503)
+    return JSONResponse(result, headers=NO_STORE)
+
+
+@router.post("/api/v1/staff/manage/attendance/work-shifts", include_in_schema=False)
+def owner_set_work_shift(payload: WorkShiftDraft, request: Request):
+    store, record, staff, denial = _shift_context(request, write=True)
+    if denial is not None:
+        return denial
+    try:
+        response = call_loanhub(request, method="GET",
+            path="/api/v1/company-staff/?limit=100", token=record.access_token,
+            company_id=staff.company_id)
+        if (response.status_code != 200 or len(response.content)>262144
+                or "application/json" not in response.headers.get("content-type", "").lower()):
+            return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+        rows = response.json()
+        if not isinstance(rows, list) or len(rows)>100:
+            return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+        matches = []
+        for row in rows:
+            if UUID(str(row["company_id"])) != staff.company_id:
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            user = row["user"]
+            user_id = UUID(str(user["id"]))
+            if row.get("user_id") is not None and UUID(str(row["user_id"])) != user_id:
+                return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+            if user_id == payload.employee_id:
+                matches.append(row)
+        if len(matches) != 1:
+            return fail("EMPLOYEE_NOT_VERIFIED", 403)
+        member = matches[0]
+        if member.get("is_active") is not True:
+            return fail("EMPLOYEE_NOT_VERIFIED", 403)
+        # Only the target's verified membership fields are needed by the store.
+        employee = VerifiedStaffIdentity(payload.employee_id, staff.company_id,
+            str(member["role"]).upper(), True, frozenset())
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        return fail("STAFF_DIRECTORY_UNAVAILABLE", 503)
+    try:
+        changed = store.set_shift(staff, employee, work_date=payload.work_date,
+            starts_at=payload.starts_at, ends_at=payload.ends_at,
+            grace_minutes=payload.grace_minutes)
+    except StaffAccessDenied:
+        return fail("EMPLOYEE_NOT_VERIFIED", 403)
+    except ValueError:
+        return fail("INVALID_WORK_SHIFT", 422)
+    except psycopg.Error:
+        return fail("WORK_SHIFTS_UNAVAILABLE", 503)
+    return JSONResponse({"changed": changed, "employee_id": str(employee.user_id),
+                         "work_date": payload.work_date.isoformat()}, headers=NO_STORE)
